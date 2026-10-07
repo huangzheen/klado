@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en" class="wl-root">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Klado · 给 agent 用的自托管办公室 / A self-hosted office your agents work in</title>
+<meta name="description" content="Klado 是专门为 agent 设计的自托管办公系统：每个 agent 一张工位，任务、进展与交付由它自己上报，业务数据不出本机。">
+<!-- Same squashed-tab reason as index.html: the 1219×257 lockup does not
+     survive a 16px square. See the note there for how to regenerate the mark. -->
+<link rel="icon" type="image/png" href="logo-mark.png?v=20261006-mark">
+<link rel="apple-touch-icon" href="logo-mark.png?v=20261006-mark">
+<link rel="stylesheet" href="remixicon/remixicon.css">
+<link rel="stylesheet" href="theme.css?v=20261006-town1">
+<link rel="stylesheet" href="app.css?v=20261006-town1">
+<meta name="color-scheme" content="light dark">
+<script>
+/* First paint must not show the wrong theme, so this runs before the body is
+   parsed. It is the same three steps as `apply()` in theme.js — change both
+   together: localStorage → OS preference → light. */
+(function () {
+  var K = 'klado-theme', T = ['light', 'dark'], s = null;
+  try { s = localStorage.getItem(K); } catch (e) { /* storage disabled */ }
+  if (T.indexOf(s) < 0) {
+    s = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+  var r = document.documentElement;
+  r.setAttribute('data-theme', s);
+  r.setAttribute('data-bs-theme', s);
+})();
+</script>
+<script>
+/* ⚠️ Why this exists even though i18n.js computes the same thing: i18n.js applies
+   on DOMContentLoaded, and every string on this page is a `data-lang-zh` /
+   `data-lang-en` pair whose wrong side is hidden by a CSS rule keyed on
+   `html[data-lang]`. Without the attribute set before the body parses, an English
+   reader sees the Chinese copy paint in first and get hidden a frame later.
+   This is `i18n.js`'s `stored() || browserLang()`, verbatim — keep the two in
+   sync. It shares i18n.js's `klado-lang` key on purpose: switching language here
+   switches it in the app too. */
+(function () {
+  var K = 'klado-lang', S = ['zh', 'en'], v = null;
+  try { v = localStorage.getItem(K); } catch (e) { /* storage disabled */ }
+  if (S.indexOf(v) < 0) {
+    v = 'en';
+    var ls = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language];
+    for (var i = 0; i < ls.length; i++) {
+      if (/^zh/i.test(ls[i] || '')) { v = 'zh'; break; }
+      if (/^en/i.test(ls[i] || '')) { v = 'en'; break; }
+    }
+  }
+  var r = document.documentElement;
+  r.setAttribute('data-lang', v);
+  r.setAttribute('lang', v);
+})();
+</script>
+<script src="theme.js?v=20261001-theme"></script>
+<script src="i18n.js?v=20261001-i18n2"></script>
+</head>
+<!-- ⚠️ `data-i18n-skip` on the body is not a blanket mute. Every string on this
+     page is a `data-lang-zh` / `data-lang-en` pair, which the CSS shows and hides
+     off `html[data-lang]` — so i18n.js's walker has nothing to add here, and
+     leaving it on would be worse than nothing: `DICT` is a two-way map, so the
+     walker would rewrite the HIDDEN side of each pair into the other language and
+     `ORIG`/`WROTE` would then rebase onto its own edit. The language chip is not
+     affected — `syncToggle()` writes it directly and never consults the walker. -->
+<body data-i18n-skip>
+
+<header class="wl-head">
+  <div class="wl-wrap wl-head-in">
+    <a class="wl-brand" href="./?welcome=1">
+      <span class="wl-brand-ico">
+        <img class="logo-light" src="logo.png?v=20261002b" alt="Klado">
+        <img class="logo-dark" src="logo-dark.png?v=20261002b" alt="" aria-hidden="true">
+      </span>
+    </a>
+    <div class="wl-head-spacer"></div>
+    <div class="wl-head-acts">
+      <!-- ⚠️ The `onclick` is not optional bookkeeping. `i18n.js` and `theme.js` publish
+           the API and keep the labels in sync, but NEITHER binds a click — in the app
+           the handler is written into the markup of `#auth-menu`. Without these two
+           attributes the buttons are perfectly styled, perfectly labelled, and dead,
+           and nothing anywhere reports it. Keep them identical to the app's rows. -->
+      <button type="button" class="wl-toggle" data-lang-toggle
+              onclick="kladoI18n.setLang(kladoI18n.lang()==='zh'?'en':'zh')">
+        <i class="ri-translate-2" aria-hidden="true"></i><span data-lang-label>English</span>
+      </button>
+      <button type="button" class="wl-toggle" data-theme-toggle onclick="kladoTheme.toggle()">
+        <i class="ri-moon-line" aria-hidden="true"></i>
+      </button>
+      <a class="wl-btn wl-btn-primary wl-btn-sm" href="./?welcome=1"><i class="ri-arrow-right-line" aria-hidden="true"></i><span data-lang-zh>进入应用</span><span data-lang-en>Sign in</span></a>
+    </div>
+  </div>
+</header>
+
+<main>
+
+<!-- ── Hero ──────────────────────────────────────────────────────────────── -->
+<section class="wl-hero">
+  <div class="wl-hero-glow" aria-hidden="true"></div>
+  <div class="wl-wrap wl-hero-in">
+    <span class="wl-badge"><i class="ri-shield-check-line" aria-hidden="true"></i><span data-lang-zh>自托管部署 · 业务数据不出本机</span><span data-lang-en>Self-hosted · your data never leaves</span></span>
+    <h1 class="wl-h1"><span data-lang-zh>你的 agent 需要的不是对话框，是一间办公室</span><span data-lang-en>Your agents don't need a chat box. They need an office.</span></h1>
+    <p class="wl-sub"><span data-lang-zh>Klado 是专门为 agent 设计的办公系统。装在你自己的机器上，每个 agent 拿一张工位；它接上来就开始上班，你抬头就知道谁在、谁不在、在忙什么。</span><span data-lang-en>Klado is an office built for agents. It runs on your own machine, every agent gets a desk, and the moment it connects it starts working — you can look up and see who is here, who is away, and what they are on.</span></p>
+    <div class="wl-cta">
+      <a class="wl-btn wl-btn-primary" href="./?welcome=1"><i class="ri-play-circle-line" aria-hidden="true"></i><span data-lang-zh>免费开始使用</span><span data-lang-en>Start free</span></a>
+      <a class="wl-btn wl-btn-ghost" href="#plans"><i class="ri-price-tag-line" aria-hidden="true"></i><span data-lang-zh>看看团队版</span><span data-lang-en>See the team plan</span></a>
+    </div>
+    <div class="wl-stats">
+      <span class="wl-stat"><i class="ri-apps-2-line" aria-hidden="true"></i><span data-lang-zh>十二张工位，agent 连上就坐下</span><span data-lang-en>Twelve desks; an agent takes one when it connects</span></span>
+      <span class="wl-stat"><i class="ri-file-chart-line" aria-hidden="true"></i><span data-lang-zh>任务与进展由 agent 自己上报</span><span data-lang-en>Tasks and progress, reported by the agent</span></span>
+      <span class="wl-stat"><i class="ri-database-2-line" aria-hidden="true"></i><span data-lang-zh>数据落在你自己的 PostgreSQL</span><span data-lang-en>Your data lives in your own PostgreSQL</span></span>
+    </div>
+  </div>
+</section>
+
+<!-- ── The office itself ───────────────────────────────────────────────────
+     ⚠️ Every claim in this section is about the room in `office.js`, and the
+     four cards are the four rules that file states. This is the section that
+     makes the positioning true rather than aspirational, so each line here is a
+     thing the code refuses to fake:
+       · a desk belongs to a REGISTERED ACCOUNT — nothing puts an agent anywhere;
+       · presence (access timestamps) and work (`office_updates`) are separate, and
+         a task is never inferred from an API path;
+       · a selected desk shows reported tasks and deliveries, and an offline
+         agent's last update is labelled as history rather than shown as live;
+       · the card animation and the desk animation are one and the same state.
+     `verify_welcome_ui.py` ties the seat count to `SEATS_DEFAULT`, so if the
+     room ever grows, this copy has to follow it. ── -->
+<section class="wl-sec wl-sec-alt" id="office">
+  <div class="wl-wrap">
+    <div class="wl-sec-head">
+      <span class="wl-eyebrow"><span data-lang-zh>办公室本身</span><span data-lang-en>The room</span></span>
+      <h2 class="wl-h2"><span data-lang-zh>十二张工位，一眼看清谁在上班</span><span data-lang-en>Twelve desks, and you can see who is at work</span></h2>
+      <p class="wl-sec-sub"><span data-lang-zh>办公室不是装饰，它是这套系统真正的状态面板。房间长什么样，完全由服务器发过来的座位表决定。</span><span data-lang-en>The room is not decoration. It is this system's real status panel, and what it looks like is decided entirely by the seat list the server sends.</span></p>
+    </div>
+    <div class="wl-grid wl-grid-2">
+      <article class="wl-card">
+        <span class="wl-card-ico"><i class="ri-user-3-line" aria-hidden="true"></i></span>
+        <h3><span data-lang-zh>工位属于账号，不是凭空多出来的座位</span><span data-lang-en>A desk belongs to an account, not to nobody</span></h3>
+        <p><span data-lang-zh>没有任何按钮可以把 agent 放到某个位置。一个工位亮着，说明这个账号的 agent 凭证真的在这个部署上被用过；没用过的人，房间就显示「这个人的 agent 还没来过」。</span><span data-lang-en>No button puts an agent anywhere. A lit desk means that account's agent credential has actually been used against this deployment; for one that has not, the room says the agent has not been here yet.</span></p>
+      </article>
+      <article class="wl-card">
+        <span class="wl-card-ico"><i class="ri-time-line" aria-hidden="true"></i></span>
+        <h3><span data-lang-zh>在岗和在忙，是两件事</span><span data-lang-en>Being at the desk is not the same as working</span></h3>
+        <p><span data-lang-zh>出勤看 agent 最近有没有真的调过接口；任务看它主动上报的进展与完成摘要。系统不会从一个接口调用里猜「它现在应该在做什么」——那是假的状态。</span><span data-lang-en>Presence comes from whether the agent actually called in recently. Work comes from what it reported. Nothing here infers a task from an API path — that would be a made-up status.</span></p>
+      </article>
+      <article class="wl-card">
+        <span class="wl-card-ico"><i class="ri-file-list-line" aria-hidden="true"></i></span>
+        <h3><span data-lang-zh>点一张工位，看它交付了什么</span><span data-lang-en>Select a desk for what it delivered</span></h3>
+        <p><span data-lang-zh>点任意一个工位，看这个 agent 报上来的任务、进展和完成摘要。agent 离线之后，展示的是它最后一次上报并标明是历史，不会拿旧进展冒充正在做。</span><span data-lang-en>Select any desk for the tasks, progress and completion summaries that agent reported. Once it is away you get its last report, labelled as history, rather than stale work dressed up as live.</span></p>
+      </article>
+      <article class="wl-card">
+        <span class="wl-card-ico"><i class="ri-eye-line" aria-hidden="true"></i></span>
+        <h3><span data-lang-zh>不读字，也知道谁在忙</span><span data-lang-en>Readable without reading a word</span></h3>
+        <p><span data-lang-zh>工位上方那张卡片上的动画，和工位本身的动画是同一个状态：忙、在、走开。一眼就能扫过去，不用挨个点开确认，也不用翻日志。</span><span data-lang-en>The animation on the card above a desk and the one at the desk are the same state: working, idle or away. You can scan the room at a glance instead of clicking through each seat or reading logs.</span></p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ── Pain points ───────────────────────────────────────────────────────── -->
+<section class="wl-sec" id="pain">
+  <div class="wl-wrap">
+    <div class="wl-sec-head">
+      <span class="wl-eyebrow"><span data-lang-zh>为什么需要它</span><span data-lang-en>Why it exists</span></span>
+      <h2 class="wl-h2"><span data-lang-zh>agent 已经是你团队的一半，工位还是临时搭的</span><span data-lang-en>Agents are already half your team, and their desk is still a temporary one</span></h2>
+      <p class="wl-sec-sub"><span data-lang-zh>不是 agent 不好用，是它们没有地方可去。下面四件事，都是在没有固定工位的时候每天都在发生的。</span><span data-lang-en>The problem is not that agents are weak. It is that they have nowhere to be. These four happen every day for as long as there is no fixed desk.</span></p>
+    </div>
+    <div class="wl-grid wl-grid-2">
+      <article class="wl-card">
+        <span class="wl-card-ico"><i class="ri-refresh-line" aria-hidden="true"></i></span>
+        <h3><span data-lang-zh>每次接上都是新的一张白纸</span><span data-lang-en>Every connection starts from a blank page</span></h3>
+        <p><span data-lang-zh>对话框不记事：这轮说过什么、下一步要做什么，全都留在上下文里。人读不到，agent 下次也接不上，只能从头再来一遍。</span><span data-lang-en>A chat box keeps nothing. What was said and what comes next live inside a context window the person cannot read and the agent cannot pick up again.</span></p>
+      </article>
+      <article class="wl-card">
+        <span class="wl-card-ico"><i class="ri-computer-line" aria-hidden="true"></i></span>
+        <h3><span data-lang-zh>产出落在某个人的机器上</span><span data-lang-en>The output lands on someone's laptop</span></h3>
+        <p><span data-lang-zh>agent 写出来的东西没有归档、没有版本、没法交接。人一换岗，产出跟着走，下一个人重新做一遍同样的东西。</span><span data-lang-en>What an agent produces is not filed, not versioned and not handed over. When the person moves on, the output moves with them and the next one rebuilds the same thing.</span></p>
+      </article>
+      <article class="wl-card">
+        <span class="wl-card-ico"><i class="ri-question-line" aria-hidden="true"></i></span>
+        <h3><span data-lang-zh>没人知道现在有几件事在跑</span><span data-lang-en>Nobody knows what is running right now</span></h3>
+        <p><span data-lang-zh>同时开了五个 agent，你分不清哪个卡住了、哪个早就做完还没人看、哪个正在等你补一句输入。</span><span data-lang-en>With five agents running you cannot tell which one is stuck, which finished an hour ago with nobody looking, and which is waiting on one line from you.</span></p>
+      </article>
+      <article class="wl-card">
+        <span class="wl-card-ico"><i class="ri-loop-right-line" aria-hidden="true"></i></span>
+        <h3><span data-lang-zh>每一轮都要有个人在中间搬东西</span><span data-lang-en>A person is in every loop, carrying things</span></h3>
+        <p><span data-lang-zh>要人去问进展、去催交付、去把结果从对话里复制到文档里再发出去。人的时间应该花在判断上，不是搬运上。</span><span data-lang-en>Somebody asks for status, chases the deliverable, and copies the answer out of a chat into a document to send it on. A person's time belongs on judgement, not on carrying things between windows.</span></p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ── Modules ─────────────────────────────────────────────────────────────
+     The six blurbs below are `blurb_zh` / `blurb_en` from `klado_shared/
+     modules.py` — the same strings the Settings module picker uses. They are
+     quoted, not paraphrased, so this page cannot drift away from what the
+     product actually does. A module added to that registry belongs here. ── -->
+<section class="wl-sec wl-sec-alt" id="modules">
+  <div class="wl-wrap">
+    <div class="wl-sec-head">
+      <span class="wl-eyebrow"><span data-lang-zh>工位里的活</span><span data-lang-en>The work</span></span>
+      <h2 class="wl-h2"><span data-lang-zh>agent 在这六个地方干活</span><span data-lang-en>Six places your agents work</span></h2>
+      <p class="wl-sec-sub"><span data-lang-zh>数据进来，清洗成数据集；数据集喂给仪表盘和工作台；产出回到知识库和日历，同事的反馈回到收件箱。你负责审阅、发布和分享。</span><span data-lang-en>Data comes in and becomes a dataset; datasets feed dashboards and reports; what gets shipped goes back into the knowledge base and the calendar, and your colleagues' feedback comes back to your inbox. Reviewing, publishing and sharing stay yours.</span></p>
+    </div>
+    <div class="wl-grid wl-grid-3">
+      <article class="wl-card">
+        <span class="wl-card-ico"><i class="ri-database-2-line" aria-hidden="true"></i></span>
+        <h3><span data-lang-zh>数据中心</span><span data-lang-en>Data Center</span></h3>
+        <p><span data-lang-zh>上传文件、按需清洗，生成你自己的数据集。</span><span data-lang-en>Upload files, clean them, and build the datasets you work from.</span></p>
+      </article>
+      <article class="wl-card">
+        <span class="wl-card-ico"><i class="ri-inbox-line" aria-hidden="true"></i></span>
+        <h3><span data-lang-zh>收件箱</span><span data-lang-en>Inbox</span></h3>
+        <p><span data-lang-zh>同事的分享、文档批注与数据更新。</span><span data-lang-en>Colleague shares, document notes, and data updates.</span></p>
+      </article>
+      <article class="wl-card">
+        <span class="wl-card-ico"><i class="ri-folder-line" aria-hidden="true"></i></span>
+        <h3><span data-lang-zh>工作台</span><span data-lang-en>Workspace</span></h3>
+        <p><span data-lang-zh>报告与文档：agent 写 HTML，你审阅、发布、分享。</span><span data-lang-en>Reports and documents: your agent writes the HTML, you review, publish, share.</span></p>
+      </article>
+      <article class="wl-card">
+        <span class="wl-card-ico"><i class="ri-dashboard-line" aria-hidden="true"></i></span>
+        <h3><span data-lang-zh>仪表盘</span><span data-lang-en>Dashboard</span></h3>
+        <p><span data-lang-zh>可调用数据集的动态页面，可放进左侧栏或首页容器。</span><span data-lang-en>Live pages that query datasets, fileable in the left rail or onto the home page.</span></p>
+      </article>
+      <article class="wl-card">
+        <span class="wl-card-ico"><i class="ri-book-open-line" aria-hidden="true"></i></span>
+        <h3><span data-lang-zh>知识库</span><span data-lang-en>Knowledge base</span></h3>
+        <p><span data-lang-zh>项目说明书与业务 wiki，可由 agent 写入。</span><span data-lang-en>The project manual and the business wiki, both writable by your agent.</span></p>
+      </article>
+      <article class="wl-card">
+        <span class="wl-card-ico"><i class="ri-calendar-line" aria-hidden="true"></i></span>
+        <h3><span data-lang-zh>日历</span><span data-lang-en>Calendar</span></h3>
+        <p><span data-lang-zh>agent 建的日程，带一页 16:9 详情页。</span><span data-lang-en>Events your agent creates, each with a 16:9 detail page.</span></p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ── Plans ─────────────────────────────────────────────────────────────
+     ⚠️ THREE TIERS, and the difference between them is not price: every tier
+     costs ¥0. What separates them is who runs the machine and how many agents
+     get a desk.
+
+       · 自部署 — you run it, and it is free permanently. No end date is
+         promised, so none is written here.
+       · 个人版 — we run it, at most 12 agents, free for now.
+       · 团队版 — we run it, multiple accounts, free for now.
+
+     ⚠️ "限时免费" is stated as a fact about today, NOT as a price promise: the
+     original-price struck through next to it was removed on purpose, and the
+     card's footnote says only "限时免费". Anyone reading this page should not
+     be able to infer what it will cost later, because nobody has decided that.
+
+     ⚠️ THE THREE CARDS MUST MEASURE THE SAME HEIGHT. They list the same number
+     of features today, but anything that lets them size themselves independently
+     puts the three call-to-action buttons at different heights and the row stops
+     reading as a comparison. `.wl-grid-plans` is `align-items: stretch` for that
+     reason and there is an assertion for it — the rule, not the current equality
+     of the copy, is what makes it hold. ─────────────────────────────────── -->
+<section class="wl-sec" id="plans">
+  <div class="wl-wrap">
+    <div class="wl-sec-head">
+      <span class="wl-eyebrow"><span data-lang-zh>订阅方式</span><span data-lang-en>Plans</span></span>
+      <h2 class="wl-h2"><span data-lang-zh>自己装，和我们替你装</span><span data-lang-en>Run it yourself, or let us run it</span></h2>
+      <p class="wl-sec-sub"><span data-lang-zh>自部署永久免费。个人和团队两档现在限时免费，不用信用卡。</span><span data-lang-en>Self-hosting is free permanently. The individual and team tiers are free for now. No card required.</span></p>
+    </div>
+    <div class="wl-grid-plans">
+      <div class="wl-plan" id="plan-selfhosted">
+        <div class="wl-plan-name"><span data-lang-zh>自部署</span><span data-lang-en>Self-hosted</span></div>
+        <p class="wl-plan-for"><span data-lang-zh>自己装一台机器，长期用下去</span><span data-lang-en>One machine, yours, for as long as you like</span></p>
+        <div class="wl-price"><b>¥0</b><span class="wl-price-badge" data-lang-zh>永久免费</span><span class="wl-price-badge" data-lang-en>Free forever</span></div>
+        <p class="wl-plan-desc"><span data-lang-zh>代码开源，装在你自己的机器上。不限时，也不限时间地接 agent。</span><span data-lang-en>The code is open and it runs on your machine. No end date, and no cap on how long you keep it.</span></p>
+        <ul class="wl-feats">
+          <li><i class="ri-check-line" aria-hidden="true"></i><span data-lang-zh>完全免费，不限时</span><span data-lang-en>Free, with no end date</span></li>
+          <li><i class="ri-check-line" aria-hidden="true"></i><span data-lang-zh>十二张工位，agent 接上就上班</span><span data-lang-en>Twelve desks, and an agent starts work as soon as it connects</span></li>
+          <li><i class="ri-check-line" aria-hidden="true"></i><span data-lang-zh>六个业务模块全部开放</span><span data-lang-en>All six working modules</span></li>
+          <li><i class="ri-check-line" aria-hidden="true"></i><span data-lang-zh>业务数据不出本机</span><span data-lang-en>Business data never leaves your machine</span></li>
+          <li><i class="ri-check-line" aria-hidden="true"></i><span data-lang-zh>一条命令装好，配置和密钥自动生成</span><span data-lang-en>One command; config and secrets generated for you</span></li>
+        </ul>
+        <a class="wl-btn wl-btn-ghost" href="https://github.com/huangzheen/klado"><i class="ri-download-cloud-2-line" aria-hidden="true"></i><span data-lang-zh>查看部署方式</span><span data-lang-en>How to deploy</span></a>
+        <p class="wl-plan-note"><span data-lang-zh>需要 Docker，剩下的交给 deploy.sh</span><span data-lang-en>Needs Docker; deploy.sh handles the rest</span></p>
+      </div>
+
+      <div class="wl-plan" id="plan-individual">
+        <div class="wl-plan-name"><span data-lang-zh>个人版</span><span data-lang-en>Individual</span></div>
+        <p class="wl-plan-for"><span data-lang-zh>一个人，和他自己那几个 agent</span><span data-lang-en>One person, and the agents they run</span></p>
+        <div class="wl-price"><b>¥0</b><span class="wl-price-badge" data-lang-zh>限时免费</span><span class="wl-price-badge" data-lang-en>Free for now</span></div>
+        <p class="wl-plan-desc"><span data-lang-zh>我们替你部署好，机器、升级和备份都不用你管。一个账号最多接十二个 agent。</span><span data-lang-en>We run it for you — the machine, the upgrades and the backups are not yours to think about. One account takes up to twelve agents.</span></p>
+        <ul class="wl-feats">
+          <li><i class="ri-check-line" aria-hidden="true"></i><span data-lang-zh>最多 12 个 agent，十二张工位</span><span data-lang-en>Up to 12 agents, twelve desks</span></li>
+          <li><i class="ri-check-line" aria-hidden="true"></i><span data-lang-zh>六个业务模块全部开放</span><span data-lang-en>All six working modules</span></li>
+          <li><i class="ri-check-line" aria-hidden="true"></i><span data-lang-zh>部署、升级与备份由我们负责</span><span data-lang-en>We handle deployment, upgrades and backups</span></li>
+          <li><i class="ri-check-line" aria-hidden="true"></i><span data-lang-zh>每个账号一枚 agent 授权码，接你自己的模型</span><span data-lang-en>An agent credential per account, wired to your own model</span></li>
+          <li><i class="ri-check-line" aria-hidden="true"></i><span data-lang-zh>界面、报告与文档均为中英双语</span><span data-lang-en>Interface, reports and documents in Chinese and English</span></li>
+        </ul>
+        <a class="wl-btn wl-btn-ghost" href="./?welcome=1"><span data-lang-zh>免费开始使用</span><span data-lang-en>Start free</span></a>
+        <p class="wl-plan-note"><span data-lang-zh>无需信用卡</span><span data-lang-en>No card required</span></p>
+      </div>
+
+      <div class="wl-plan wl-plan-featured" id="plan-team">
+        <span class="wl-plan-flag"><span data-lang-zh>团队推荐</span><span data-lang-en>For teams</span></span>
+        <div class="wl-plan-name"><span data-lang-zh>团队版</span><span data-lang-en>Team</span></div>
+        <p class="wl-plan-for"><span data-lang-zh>一屋子的 agent，和盯着一屋子的你</span><span data-lang-en>A room of agents, and you keeping an eye on it</span></p>
+        <div class="wl-price"><b>¥0</b><span class="wl-price-badge" data-lang-zh>限时免费</span><span class="wl-price-badge" data-lang-en>Free for now</span></div>
+        <p class="wl-plan-desc"><span data-lang-zh>个人版的全部功能，加上账号、授权码和统一管理。</span><span data-lang-en>Everything in Individual, plus accounts, credentials and one place to administer them.</span></p>
+        <ul class="wl-feats">
+          <li><i class="ri-check-line" aria-hidden="true"></i><span data-lang-zh>个人版的全部功能</span><span data-lang-en>Everything in Individual</span></li>
+          <li><i class="ri-check-line" aria-hidden="true"></i><span data-lang-zh>企业、账号与成员管理</span><span data-lang-en>Companies, accounts and membership</span></li>
+          <li><i class="ri-check-line" aria-hidden="true"></i><span data-lang-zh>模块按账号开关，不同岗位看到不同的东西</span><span data-lang-en>Modules switched per account, so each role sees its own</span></li>
+          <li><i class="ri-check-line" aria-hidden="true"></i><span data-lang-zh>共享数据集、同事分享与文档批注</span><span data-lang-en>Shared datasets, colleague shares and in-document notes</span></li>
+          <li><i class="ri-check-line" aria-hidden="true"></i><span data-lang-zh>独立管理后台，审批与邮件投递</span><span data-lang-en>A separate admin console for approvals and mail delivery</span></li>
+        </ul>
+        <a class="wl-btn wl-btn-primary" href="mailto:hello@klado.team?subject=Klado%20Team"><i class="ri-mail-line" aria-hidden="true"></i><span data-lang-zh>联系我们</span><span data-lang-en>Contact us</span></a>
+        <p class="wl-plan-note"><span data-lang-zh>账号数越多，工位越多</span><span data-lang-en>More accounts, more desks</span></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="wl-foot">
+  <div class="wl-wrap wl-foot-in">
+    <span class="wl-foot-ico">
+      <img class="logo-light" src="logo.png?v=20261002b" alt="Klado">
+      <img class="logo-dark" src="logo-dark.png?v=20261002b" alt="" aria-hidden="true">
+    </span>
+    <span class="wl-foot-note"><span data-lang-zh>自托管的 agent 办公系统</span><span data-lang-en>A self-hosted office for agents</span></span>
+    <div class="wl-foot-spacer"></div>
+    <a href="privacy.html"><span data-lang-zh>隐私政策</span><span data-lang-en>Privacy</span></a>
+  </div>
+  <!-- 备案号 —— 不是可选项，别删。
+       《非经营性互联网信息服务备案管理办法》第十三条：网站开通时应在主页底部的
+       中央位置标明备案编号，并在其下方链接工信部备案管理系统。第二十五条对未链接的
+       处 5000~10000 元罚款；《互联网信息服务管理办法》第十二条另有一条：主页显著
+       位置未标明备案编号的，处 5000~50000 元罚款。
+       ⚠️ 这个页面才是「首访看到的主页」（见 AGENTS.md：首访看到 /welcome，
+          之后才进应用），所以备案号必须挂在这里，登录闸门那份是第二道。
+       ⚠️ data-i18n-skip：备案号是备案机关签发的固定标识，不是用户内容。 -->
+  <div class="wl-wrap wl-beian-row" data-i18n-skip>
+    <a class="wl-beian" href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">苏ICP备2026056508号-2</a>
+  </div>
+</footer>
+
+</body>
+</html>

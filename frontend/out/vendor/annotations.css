@@ -1,0 +1,294 @@
+/* Reader notes — the layer a document grows when colleagues annotate it.
+ *
+ * Injected by the server into a served report / event page, and loaded by the
+ * SPA for the wiki reading pane. Everything is namespaced `doc-anno` and every
+ * rule is either fixed or `!important` against a host that we do not control:
+ * the document underneath may be a 1920×1080 deck that is being scaled with a
+ * transform, or a wiki pane with its own type scale. Hostile CSS must not be
+ * able to hide a colleague's note.
+ */
+
+.doc-anno-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;      /* the layer never eats a click; bubbles opt back in */
+}
+
+/* A deck is scaled with transform:scale(), so a bubble placed INSIDE a slide
+ * would shrink with it (13px at 0.42 scale is 5px on screen). So in deck mode
+ * the layer is a fixed overlay the size of the visible slide, and the bubbles
+ * live in real screen pixels. */
+.doc-anno-layer--deck {
+  position: fixed;
+  z-index: 2147482000;
+  pointer-events: none;
+}
+
+.doc-anno {
+  position: absolute;
+  pointer-events: auto;
+  max-width: min(320px, 60vw);
+  font: 500 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
+        "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: #1f2937;
+}
+
+/* The stored percentage must land on the pixel the reader clicked, so the dot is
+ * centred on that point rather than offset by a magic number. Half the dot, not
+ * half a guess: change the dot's size and this still lines up. */
+.doc-anno-dot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #f59e0b;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, .35);
+  cursor: pointer;
+}
+
+.doc-anno[data-resolved="1"] .doc-anno-dot {
+  background: #94a3b8;
+}
+
+.doc-anno-card {
+  position: absolute;
+  left: 20px;
+  top: -6px;
+  width: max-content;
+  max-width: min(300px, 58vw);
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  padding: 7px 9px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, .16);
+  cursor: pointer;
+  /* The note's TEXT is the whole point of the marker: a bare dot left a
+     colleague's sentence invisible until somebody happened to click it. The
+     bubble is therefore always on; the switch in the bottom-right corner is how
+     a page with many notes is quietened, and `.is-open` now only reveals the
+     actions. */
+  display: block;
+}
+
+.doc-anno.is-open .doc-anno-card { box-shadow: 0 10px 26px rgba(15, 23, 42, .22); }
+
+/* Flip towards the inside when the card would leave the page. */
+.doc-anno.flip-x .doc-anno-card { left: auto; right: 20px; }
+.doc-anno.flip-y .doc-anno-card { top: auto; bottom: -6px; }
+
+.doc-anno-who {
+  font-weight: 700;
+  font-size: 11px;
+  color: #92400e;
+  word-break: break-all;
+}
+
+.doc-anno-when {
+  font-size: 10px;
+  color: #a16207;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+.doc-anno-body {
+  margin-top: 3px;
+  font-size: 12px;
+  color: #1f2937;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.doc-anno.is-resolved .doc-anno-body {
+  text-decoration: line-through;
+  opacity: .65;
+}
+
+.doc-anno-acts {
+  display: none;                    /* revealed by opening the bubble (below) */
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.doc-anno.is-open .doc-anno-acts,
+.doc-anno:hover .doc-anno-acts { display: flex; }
+
+.doc-anno-acts button,
+.doc-anno-compose button {
+  font: inherit;
+  font-size: 11px;
+  border: 1px solid #d97706;
+  background: #fff;
+  color: #92400e;
+  border-radius: 5px;
+  padding: 2px 7px;
+  cursor: pointer;
+}
+
+.doc-anno-acts button:hover,
+.doc-anno-compose button:hover { background: #fef3c7; }
+
+.doc-anno-acts button.primary,
+.doc-anno-compose button.primary {
+  background: #f59e0b;
+  color: #fff;
+  border-color: #f59e0b;
+}
+
+.doc-anno-compose {
+  position: absolute;
+  pointer-events: auto;
+  width: min(300px, 76vw);
+  background: #fff;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  padding: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, .2);
+  z-index: 2;
+}
+
+/* Flipped to the other side of the click when the editor would open off the page. */
+.doc-anno-compose.flip-x { transform: translateX(calc(-100% - 8px)); }
+
+.doc-anno-compose textarea {
+  width: 100%;
+  min-height: 62px;
+  resize: vertical;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 6px;
+  border: 1px solid var(--anno-border, #e2e8f0);
+  border-radius: 6px;
+  box-sizing: border-box;
+  color: #1f2937;
+  background: #fff;
+}
+
+.doc-anno-compose-acts {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.doc-anno-hint {
+  font-size: 10px;
+  color: #a16207;
+  margin-top: 5px;
+}
+
+.doc-anno-error {
+  font-size: 11px;
+  color: #b91c1c;
+  margin-top: 5px;
+}
+
+/* ── the show / hide toggle ───────────────────────────────────────────────── */
+
+.doc-anno-toggle {
+  position: fixed;
+  /* The page's bottom-right corner, always. It used to sit top-right, where it
+     landed on top of whatever else lived there (the document's own controls, and
+     the wiki header it was anchored into). */
+  bottom: 14px;
+  right: 14px;
+  z-index: 2147482100;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 600 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Microsoft YaHei", sans-serif;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 999px;
+  padding: 6px 11px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, .14);
+}
+
+.doc-anno-toggle:hover { background: #fef3c7; }
+
+.doc-anno-toggle[data-visible="0"] {
+  color: #475569;
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.doc-anno-toggle .doc-anno-toggle-n {
+  display: inline-block;
+  min-width: 16px;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 10px;
+  text-align: center;
+}
+
+.doc-anno-toggle[data-visible="0"] .doc-anno-toggle-n {
+  background: #cbd5e1;
+  color: #475569;
+}
+
+/* A host may hand us an anchor to live in (the wiki reading pane's header), but
+ * the switch belongs to the PAGE rather than to that host: wherever it was
+ * appended, it stays pinned to the bottom-right corner. Being `fixed` also keeps
+ * it out of the host's layout, so the header does not gain a stray pill. */
+.doc-anno-toggle--inline {
+  position: fixed;
+  top: auto;
+  bottom: 14px;
+  right: 14px;
+}
+
+.doc-anno-menu {
+  position: fixed;
+  z-index: 2147482200;
+  min-width: 188px;
+  background: #fff;
+  border: 1px solid var(--anno-border, #e2e8f0);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, .18);
+  padding: 4px;
+  font: 500 12.5px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Microsoft YaHei", sans-serif;
+  color: #1f2937;
+}
+
+.doc-anno-menu button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.doc-anno-menu button:hover { background: #f1f5f9; }
+.doc-anno-menu button.danger { color: #b91c1c; }
+.doc-anno-menu .doc-anno-menu-label {
+  padding: 4px 8px 5px;
+  font-size: 10.5px;
+  color: #64748b;
+  border-bottom: 1px solid var(--anno-border, #e2e8f0);
+  margin-bottom: 3px;
+}
+
+.doc-anno-layer[hidden], .doc-anno[hidden] { display: none !important; }
+
+/* Hidden mode is a class on the layer, not `hidden` on each bubble, so a new
+ * bubble that arrives while notes are off cannot pop in by itself. */
+.doc-anno-layer.is-hidden .doc-anno { display: none !important; }

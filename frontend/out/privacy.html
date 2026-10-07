@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy | Klado</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #142033;
+      --muted: #607086;
+      --line: #d8e1ec;
+      --blue: #1377d4;
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --note-bg: #eef6ff;
+      --note-ink: #163a5f;
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --ink: #e6ecf4;
+      --muted: #9aabc0;
+      --line: #2b3a4d;
+      --blue: #5aa9f0;
+      --bg: #0e1622;
+      --panel: #16202e;
+      --note-bg: #17293c;
+      --note-ink: #cfe2f7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.65;
+    }
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 48px 22px 72px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 34px;
+      box-shadow: 0 10px 30px rgba(20, 32, 51, 0.06);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(30px, 5vw, 44px);
+      line-height: 1.12;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 32px 0 10px;
+      font-size: 20px;
+      line-height: 1.3;
+      letter-spacing: 0;
+    }
+    p, li { font-size: 16px; }
+    ul { padding-left: 22px; }
+    .meta {
+      margin: 0 0 24px;
+      color: var(--muted);
+    }
+    .note {
+      border-left: 4px solid var(--blue);
+      background: var(--note-bg);
+      padding: 12px 14px;
+      border-radius: 4px;
+      color: var(--note-ink);
+    }
+    a { color: var(--blue); }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="panel">
+      <h1>Privacy Policy</h1>
+      <p class="meta">Klado<br>Effective date: 1 October 2026</p>
+
+      <p class="note">
+        Klado is a self-hosted web application. It runs on infrastructure chosen by the
+        organisation that operates it, and that organisation is the controller of the data
+        described below. This page describes what the application itself does with data; the
+        operator's own identity and contact details appear at the end.
+      </p>
+
+      <h2>What Klado Is</h2>
+      <p>
+        Klado is a working space with six areas: a <strong>Data Center</strong> for the files you
+        upload and the datasets built from them, an <strong>Inbox</strong> for activity addressed
+        to you, a <strong>Workspace</strong> for reports and documents, a
+        <strong>Knowledge base</strong> for reference material, a <strong>Calendar</strong>, and
+        <strong>Settings</strong>. You sign in with an account; what you upload, write, and
+        publish is yours to manage and, unless you share it explicitly, visible only to you.
+      </p>
+
+      <h2>Information Processed</h2>
+      <ul>
+        <li><strong>Account records</strong> — the email address you sign in with, an optional
+          display name, an optional role, and a password hash. Klado stores only a salted
+          password hash, never the password itself.</li>
+        <li><strong>Files you upload</strong> — their contents, filename, size, and the object
+          key under which they are stored.</li>
+        <li><strong>Datasets derived from those files</strong> — the parsed rows, and any
+          derived columns computed by the cleaning rules you or your agent apply.</li>
+        <li><strong>Content you create or an agent creates for you</strong> — reports, knowledge
+          pages, calendar events, and the notes colleagues leave on documents.</li>
+        <li><strong>Inbox messages</strong> — the sender, the target document, and the event that
+          produced the message.</li>
+        <li><strong>Operational records</strong> — an access log of requests, and, when you send
+          or receive a message, the SMTP conversation metadata needed to deliver it.</li>
+      </ul>
+
+      <h2>Isolation and Access Control</h2>
+      <ul>
+        <li>Data Center datasets are stamped with the account that created them and are filtered
+          by that account on every read and write. Another signed-in account cannot list, read, or
+          delete them, and an administrator sees them only in an explicit administrative view.</li>
+        <li>The built-in query tool can only reference datasets visible to the signed-in
+          account. Queries naming anything else are refused before they run.</li>
+        <li>Documents you publish can be shared with named colleagues, or with anyone holding a
+          share link. Sharing is always an explicit action, never a default.</li>
+        <li>Request paths that load a document on its own resolve the caller's identity, so an
+          unrecognised caller receives a 404 rather than a page.</li>
+      </ul>
+
+      <h2>Automated Agents</h2>
+      <p>
+        Klado can issue an <em>access code</em> so that a script or an automated assistant can act
+        on your behalf. Such a code carries your own permissions: it reads what you can read, and
+        it does not receive the account password. Codes can be revoked at any time from Settings,
+        which takes effect on the next request, and a revoked code can then be deleted outright.
+        Every request made with a code is attributed to you.
+      </p>
+
+      <h2>Storage</h2>
+      <p>
+        Structured records live in the PostgreSQL database the operator configures. Uploaded files
+        and generated images live in an object store the operator configures — Alibaba Cloud OSS
+        or any S3-compatible service. Neither location is determined by Klado; both are set by
+        the deployment.
+      </p>
+
+      <h2>Sharing</h2>
+      <p>
+        The application shares data with third parties only where the operator has configured it,
+        and only for the purpose it was configured for:
+      </p>
+      <ul>
+        <li><strong>Email delivery</strong> — verification codes, access codes, and report
+          notifications are sent through the SMTP server the operator configures. The message
+          content is what the page you triggered says it is.</li>
+        <li><strong>Share links</strong> — a link you choose to distribute lets its holder read
+          that document without signing in. Treat it as public.</li>
+      </ul>
+      <p>
+        Klado itself contains no advertising, no analytics, and no third-party tracking.
+      </p>
+
+      <h2>Retention and Deletion</h2>
+      <ul>
+        <li>You can delete the datasets and files you uploaded, and the content you created, from
+          within the application.</li>
+        <li>An administrator can remove an account. Removing an account removes what the
+          application holds for it.</li>
+        <li>Records needed to keep the application consistent — the access log, for example — may
+          be retained for a period the operator chooses.</li>
+      </ul>
+
+      <h2>Security</h2>
+      <ul>
+        <li>Sessions use an HTTP-only cookie; the session secret is held in the deployment
+          configuration and never in the source tree.</li>
+        <li>Passwords are stored as salted hashes and compared in constant time.</li>
+        <li>Content rendered from other users' text is inserted as text, not as markup.</li>
+        <li>The application serves its own assets; user-supplied file names are never used to
+          build a path.</li>
+      </ul>
+
+      <h2>Your Responsibilities</h2>
+      <p>
+        Do not enter personal, confidential, or third-party information that you are not entitled
+        to place here. You are responsible for the access codes issued on your account, and for
+        sharing documents only with recipients who may read them.
+      </p>
+
+      <h2>Contact</h2>
+      <p>
+        For access, privacy, or security questions, contact the operator of this Klado
+        deployment — listed in your deployment's configuration and reachable through the in-app
+        administrator. If this page is being read on a deployment whose operator details are
+        missing, treat the deployment as unverified and do not upload sensitive material to it.
+      </p>
+    </section>
+  </main>
+  <script>
+    // Follow the reader's system preference, and the Klado app's stored choice when
+    // there is one — the same order theme.js uses, so this page matches the app the
+    // reader just came from. No flash: set before first paint.
+    (function () {
+      var stored = null;
+      try { stored = localStorage.getItem('klado-theme'); } catch (e) { /* private mode */ }
+      var theme = stored || (window.matchMedia &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+</body>
+</html>

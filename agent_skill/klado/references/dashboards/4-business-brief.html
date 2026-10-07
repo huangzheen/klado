@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>经营简报 · Business Brief</title>
+<style>
+  /* Style D — 简报 / brief.
+     Written for the reader who will FORWARD this, so it optimises for paper and for
+     a pasted screenshot: one narrow column, no grid, no chips, no horizontal scroll,
+     and every figure is text a reader can select. The cost is real — it cannot be
+     skimmed for shape — which is why it is the fourth option and not the first. */
+  body { background: var(--surface-2); }
+  .sheet { max-width: 760px; margin: 0 auto; background: var(--surface);
+           padding: 44px 52px 56px; border-radius: var(--r-lg);
+           box-shadow: var(--shadow-2); }
+  h1 { font-size: 27px; margin: 0 0 6px; letter-spacing: -.02em; }
+  .dateline { color: var(--text-3); font-size: 13px; margin: 0 0 26px;
+              padding-bottom: 18px; border-bottom: 2px solid var(--text-1); }
+  h2 { font-size: 15px; margin: 26px 0 8px; }
+  p { margin: 0 0 12px; font-size: 14.5px; line-height: 1.68; color: var(--text-2); }
+  p strong { color: var(--text-1); }
+  .figures { display: flex; gap: 30px; flex-wrap: wrap; margin: 18px 0 4px;
+             padding: 14px 0; border-top: 1px solid var(--border);
+             border-bottom: 1px solid var(--border); }
+  .figures div { display: flex; flex-direction: column; }
+  .figures b { font-size: 21px; font-weight: 650; }
+  .figures span { font-size: 11.5px; color: var(--text-3); }
+  .plain { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 6px; }
+  .plain th { text-align: left; font-size: 11px; letter-spacing: .04em;
+              text-transform: uppercase; color: var(--text-3);
+              border-bottom: 1px solid var(--border); padding: 6px 8px; }
+  .plain td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  .plain td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .neg { color: var(--danger); }
+  .src { margin-top: 30px; padding-top: 12px; border-top: 1px solid var(--border);
+         font-size: 11.5px; color: var(--text-3); }
+  @media print {
+    body { background: var(--surface); }
+    .sheet { box-shadow: none; padding: 0; max-width: none; border-radius: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <h1 id="t"></h1>
+  <p class="dateline" id="s"></p>
+  <div id="body"></div>
+  <p class="src" id="foot"></p>
+</div>
+
+<script>
+(async function () {
+  const F = kld.fmt;
+  const zh = (window.kladoDashboard.lang || 'zh') !== 'en';
+  const COPY = {
+    zh: { t: '价格带经营简报', s: '2026 年 1–9 月 · 数据截至 2026-09',
+          h1: '结论先说', h2: '数据',
+          lede: '九个月里三个价格带<strong>全线下滑</strong>：累计单位数 135.1 万 → 85.7 万（<strong>同比 −36.6%</strong>），收入 26.6 亿 → 17.5 亿（<strong>−34.2%</strong>）。收入跌幅小于量，<strong>不是因为结构变好，而是因为单价几乎没动</strong>。',
+          p1: '入门档（Entry）掉 <strong>−44.0%</strong>，绝对量也最大：46.7 万台，占全年 54.6%。标准档 −26.7%，旗舰档 −17.9%。三档的单价分别只降了 8.3% / 3.9% / 1.0%，所以收入的跌幅基本就是量的跌幅。',
+          p2: '真正值得注意的是<strong>毛利率全线压缩</strong>：入门档 16.4% → 12.1%（−4.3pt），标准档 29.8% → 27.1%，旗舰档 41.2% → 38.6%。入门档的单价降了 8.3% 而毛利率降了 4.3pt，说明<strong>它的单台成本在往上走</strong>——这不是打折促销能解释的。',
+          p3: '入门档贡献 54.6% 的量、29.3% 的收入，却只贡献 <strong>13.6% 的毛利</strong>。标准档和旗舰档合计以 45.4% 的量贡献了 86.4% 的毛利。⇒ 接下来真正的问题不是「要不要保入门档的量」，而是<strong>入门档的单台获取成本还能不能压到 12.1% 毛利以下</strong>；压不下去的话，量的下滑本身不是问题。',
+          u: '2026 单位数', uy: '单位数同比', r: '收入', ry: '收入同比', g: '毛利',
+          band: '价格带', vol: '量', yoy: '量同比', asp: '单价', gm: '毛利率', share: '收入占比',
+          foot: '数据来源：band_monthly_2026（2026-01 至 2026-09，agent 填入的样例数据，非真实业务）。2025 年收入按各档「2025 单位数 × 2025 平均单价」逐档相加得出（未加权平均——那会把三个档的均价算成 3,032 元，得出 40.98 亿的错误合计）。文中每个数字都来自查询结果。',
+          loading: '正在取数…', err: '取数失败：' },
+    en: { t: 'Price Band Brief', s: 'Jan–Sep 2026 · data through 2026-09',
+          h1: 'The finding first', h2: 'The numbers',
+          lede: 'All three price bands <strong>declined</strong>: units fell from 1,351,350 to 856,564 (<strong>−36.6% YoY</strong>) and revenue from ¥2,663.2M to ¥1,752.7M (<strong>−34.2%</strong>). Revenue held up better than volume <strong>not because the mix improved, but because prices barely moved</strong>.',
+          p1: 'Entry lost <strong>−44.0%</strong> and is also the largest band: 467,376 units, 54.6% of the year. Standard −26.7%, Flagship −17.9%. Prices fell only 8.3% / 3.9% / 1.0%, so revenue tracks volume almost exactly.',
+          p2: 'The sharper finding is that <strong>gross margin compressed in every band</strong>: Entry 16.4% → 12.1% (−4.3pt), Standard 29.8% → 27.1%, Flagship 41.2% → 38.6%. Entry’s price fell 8.3% while its margin fell 4.3pt, which means <strong>its cost per unit is rising</strong> — discounting does not explain that.',
+          p3: 'Entry is 54.6% of volume and 29.3% of revenue but only <strong>13.6% of gross profit</strong>; Standard and Flagship together turn 45.4% of volume into 86.4% of gross profit. So the question is not "protect Entry’s volume" but <strong>whether Entry’s cost to acquire can be pushed below its 12.1% margin</strong>. If not, the volume decline is not the problem.',
+          u: '2026 units', uy: 'Units YoY', r: 'Revenue', ry: 'Revenue YoY', g: 'Gross profit',
+          band: 'Band', vol: 'Units', yoy: 'Units YoY', asp: 'ASP', gm: 'Margin', share: 'Revenue share',
+          foot: 'Source: band_monthly_2026 (Jan–Sep 2026; sample data entered by the agent, not real business figures). 2025 revenue is the SUM over bands of (2025 units × 2025 average ASP) — an unweighted average of the three ASPs would read ¥3,032 and produce a wrong ¥4,098M total. Every figure comes from a query result.',
+          loading: 'Loading…', err: 'Could not load: ' }
+  };
+  const c = zh ? COPY.zh : COPY.en;
+  document.documentElement.lang = zh ? 'zh' : 'en';
+  document.getElementById('t').textContent = c.t;
+  document.getElementById('s').textContent = c.s;
+  document.getElementById('foot').textContent = c.foot;
+  document.getElementById('body').innerHTML = '<p>' + c.loading + '</p>';
+
+  let d;
+  try {
+    /* Per band, never a grand total over ASP. `avg(asp_2025)` across all bands is the
+       mean of three numbers (1,199 / 2,599 / 5,299) — multiplying the year's units by
+       it gives ¥4,098M against a true ¥2,663M. The sum has to be taken per band. */
+    d = (await kldQuery(
+      "SELECT band, sum(units_2025) AS u25, sum(units_2026) AS u26, " +
+      "round((sum(units_2025)*avg(asp_2025)/1000000)::numeric,1) AS rev25_m, " +
+      "round(sum(revenue_2026_m)::numeric,1) AS rev26_m, " +
+      "round(sum(gross_profit_2026_m)::numeric,1) AS gp26_m, " +
+      "round(avg(asp_2025)::numeric,0) AS asp25, round(avg(asp_2026)::numeric,0) AS asp26, " +
+      "round((avg(gm_2025)*100)::numeric,1) AS gm25, round((avg(gm_2026)*100)::numeric,1) AS gm26 " +
+      "FROM band_monthly_2026 GROUP BY band ORDER BY u26 DESC")).rows;
+  } catch (e) {
+    document.getElementById('body').innerHTML = '<p>' + c.err + e.message + '</p>';
+    return;
+  }
+
+  const sum = (k) => d.reduce((a, r) => a + Number(r[k] || 0), 0);
+  const t = { u25: sum('u25'), u26: sum('u26'), rev25: sum('rev25_m'),
+              rev26: sum('rev26_m'), gp26: sum('gp26_m') };
+  const uyoy = (t.u26 - t.u25) / t.u25 * 100;
+  const ryoy = (t.rev26 - t.rev25) / t.rev25 * 100;
+
+  const figs = kld.el('div', { class: 'figures' }, [
+    [F.compact(t.u26), c.u], [F.pct(uyoy), c.uy],
+    [F.money(t.rev26, 'M'), c.r], [F.pct(ryoy), c.ry], [F.money(t.gp26, 'M'), c.g]
+  ].map(([b, s]) => kld.el('div', {}, [kld.el('b', { text: b }), kld.el('span', { text: s })])));
+
+  const table = kld.el('table', { class: 'plain' }, [
+    kld.el('thead', null, [kld.el('tr', null, [
+      kld.el('th', { text: c.band }), kld.el('th', { class: 'n', text: c.vol }),
+      kld.el('th', { class: 'n', text: c.yoy }), kld.el('th', { class: 'n', text: c.asp }),
+      kld.el('th', { class: 'n', text: c.share }), kld.el('th', { class: 'n', text: c.gm })
+    ])]),
+    kld.el('tbody', null, d.map((b) => kld.el('tr', null, [
+      kld.el('td', { text: b.band }),
+      kld.el('td', { class: 'n', text: F.compact(b.u26) }),
+      kld.el('td', { class: 'n neg', text: F.pct((b.u26 - b.u25) / b.u25 * 100) }),
+      kld.el('td', { class: 'n', text: '¥' + F.full(b.asp26) }),
+      kld.el('td', { class: 'n', text: (b.rev26_m / t.rev26 * 100).toFixed(1) + '%' }),
+      kld.el('td', { class: 'n', text: b.gm25 + '% → ' + b.gm26 + '%' })
+    ])))
+  ]);
+
+  document.getElementById('body').replaceChildren(
+    kld.el('h2', { text: c.h1 }),
+    kld.el('p', { html: c.lede }),
+    kld.el('p', { html: c.p1 }),
+    kld.el('p', { html: c.p2 }),
+    kld.el('p', { html: c.p3 }),
+    figs,
+    kld.el('h2', { text: c.h2 }),
+    table);
+})();
+</script>
+</body>
+</html>

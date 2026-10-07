@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>经营概览 · Executive Overview</title>
+<style>
+  /* Style A — 经营概览 / executive overview.
+     The house layout: a KPI band answers "how are we", a ranking answers "where",
+     a table answers "exactly what". Three questions, three panels, in that order.
+     Everything below reads a token; there is no colour literal in this file. */
+  .lead { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .split { display: grid; grid-template-columns: 5fr 7fr; gap: 16px; }
+  @media (max-width: 1000px) { .lead { grid-template-columns: repeat(2, 1fr); }
+                                .split { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="kld-page">
+  <h1 class="kld-h1" id="t">经营概览</h1>
+  <p class="kld-sub" id="s">2026 年 1–9 月 · 全部价格带 / regions / channels</p>
+
+  <div class="lead" id="kpis"></div>
+
+  <div class="split" style="margin-top:16px">
+    <div class="kld-card">
+      <div class="kld-card-hd"><h2>量按价格带</h2><span class="kld-muted" id="band-note"></span></div>
+      <div id="band-bars"></div>
+    </div>
+    <div class="kld-card">
+      <div class="kld-card-hd"><h2>收入与毛利</h2><span class="kld-muted">月度 / 2026</span></div>
+      <div id="rev-trend"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px">
+        <div>
+          <div class="kld-muted" style="font-size:12px;margin-bottom:2px">单位数 / Units</div>
+          <div id="unit-trend"></div>
+        </div>
+        <div>
+          <div class="kld-muted" style="font-size:12px;margin-bottom:2px">毛利率 / Gross margin</div>
+          <div id="gm-trend"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="kld-card" style="margin-top:16px">
+    <div class="kld-card-hd"><h2>按区域</h2><span class="kld-muted" id="region-note"></span></div>
+    <div id="region-table"></div>
+  </div>
+
+  <p class="kld-foot" id="foot"></p>
+</div>
+
+<script>
+(async function () {
+  const F = kld.fmt, T = {};
+  const L = {};
+  const zh = (window.kladoDashboard.lang || 'zh') !== 'en';
+
+  const COPY = {
+    zh: { t: '经营概览', s: '2026 年 1–9 月 · 全部价格带 / 区域 / 渠道',
+          units: '2026 单位数', yoy: '同比', revenue: '收入', gm: '毛利率',
+          bandH: '量按价格带', bandN: '2026 累计', revH: '收入与毛利', month: '月度 / 2026',
+          regH: '按区域', regN: '按收入排序', foot: '数据来源：band_monthly_2026、region_monthly_2026（2026-01 至 2026-09，agent 填入的样例数据，非真实业务）。',
+          loading: '正在取数…', err: '取数失败：' },
+    en: { t: 'Executive Overview', s: 'Jan–Sep 2026 · all bands, regions and channels',
+          units: '2026 units', yoy: 'YoY', revenue: 'Revenue', gm: 'Gross margin',
+          bandH: 'Units by band', bandN: '2026 to date', revH: 'Revenue and margin', month: 'Monthly / 2026',
+          regH: 'By region', regN: 'Ranked by revenue', foot: 'Source: band_monthly_2026, region_monthly_2026 (2026-01 to 2026-09; sample data entered by the agent, not real business figures).',
+          loading: 'Loading…', err: 'Could not load: ' }
+  };
+  const c = zh ? COPY.zh : COPY.en;
+  document.documentElement.lang = zh ? 'zh' : 'en';
+  document.getElementById('t').textContent = c.t;
+  document.getElementById('s').textContent = c.s;
+  document.getElementById('band-note').textContent = c.bandN;
+  document.getElementById('region-note').textContent = c.regN;
+  document.getElementById('foot').textContent = c.foot;
+  document.querySelectorAll('.kld-card-hd h2').forEach((h, i) => {
+    h.textContent = [c.bandH, c.revH, c.regH][i] || h.textContent;
+  });
+  document.getElementById('band-bars').innerHTML = '<div class="kld-skel">' + c.loading + '</div>';
+
+  let data;
+  try {
+    const [total, bands, months, regions] = await Promise.all([
+      kldQuery("SELECT sum(units_2026) AS units_2026, sum(units_2025) AS units_2025, round(sum(revenue_2026_m)::numeric,1) AS revenue_m, round(sum(gross_profit_2026_m)::numeric,1) AS gp_m, round((sum(gross_profit_2026_m)/sum(revenue_2026_m)*100)::numeric,1) AS gm_pct FROM band_monthly_2026"),
+      kldQuery("SELECT band, sum(units_2026) AS units_2026 FROM band_monthly_2026 GROUP BY band ORDER BY units_2026 DESC"),
+      kldQuery("SELECT month, sum(units_2026) AS units_2026, round(sum(revenue_2026_m)::numeric,1) AS revenue_m, round((sum(gross_profit_2026_m)/sum(revenue_2026_m)*100)::numeric,1) AS gm_pct FROM band_monthly_2026 GROUP BY month ORDER BY month"),
+      kldQuery("SELECT region, sum(units_2026) AS units_2026, round(((sum(units_2026)-sum(units_2025))/sum(units_2025)*100)::numeric,1) AS yoy_pct, round(sum(revenue_2026_m)::numeric,1) AS revenue_m, round((sum(gross_profit_2026_m)/sum(revenue_2026_m)*100)::numeric,1) AS gm_pct FROM region_monthly_2026 GROUP BY region ORDER BY revenue_m DESC")
+    ]);
+    data = { total: total.rows[0], bands: bands.rows, months: months.rows, regions: regions.rows };
+  } catch (e) {
+    document.getElementById('kpis').innerHTML = '<div class="kld-empty">' + c.err + e.message + '</div>';
+    document.getElementById('band-bars').innerHTML = '';
+    return;
+  }
+
+  const t = data.total;
+  const yoy = (t.units_2026 - t.units_2025) / t.units_2025 * 100;
+
+  function kpi(label, value, delta, cls) {
+    return kld.el('div', { class: 'kld-card kld-kpi' }, [
+      kld.el('span', { class: 'lbl', text: label }),
+      kld.el('span', { class: 'val', text: value }),
+      delta ? kld.el('span', { class: 'dlt ' + (cls || ''), text: delta }) : null
+    ]);
+  }
+  document.getElementById('kpis').replaceChildren(
+    kpi(c.units, F.compact(t.units_2026), zh ? '2025 同期 ' + F.compact(t.units_2025) : F.compact(t.units_2025) + ' in 2025', ''),
+    kpi(c.yoy, F.pct(yoy), zh ? '对 2025 年累计量' : 'vs 2025 units', kld.deltaClass(yoy)),
+    kpi(c.revenue, F.money(t.revenue_m, 'M'), zh ? '毛利率 ' + t.gm_pct + '%' : 'GM ' + t.gm_pct + '%', ''),
+    kpi(c.gm, t.gm_pct + '%', F.money(t.gp_m, 'M') + (zh ? ' 毛利' : ' gross profit'), '')
+  );
+
+  kld.bars(document.getElementById('band-bars'), data.bands.map((b) => ({
+    label: b.band, value: b.units_2026
+  })), { format: F.compact });
+
+  const pts = (key) => data.months.map((m, i) => ({ x: i, y: m[key] }));
+  const draw = () => {
+    kld.spark(document.getElementById('rev-trend'), pts('revenue_m'),
+      { height: 96, label: zh ? '月收入' : 'monthly revenue', stroke: 'var(--c1)' });
+    kld.spark(document.getElementById('unit-trend'), pts('units_2026'),
+      { height: 40, stroke: 'var(--c2)', fill: 'transparent' });
+    kld.spark(document.getElementById('gm-trend'), pts('gm_pct'),
+      { height: 40, stroke: 'var(--c3)', fill: 'transparent' });
+  };
+  draw();
+  kld.onTheme(draw);
+
+  kld.table(document.getElementById('region-table'), data.regions, [
+    { key: 'region', label: zh ? '区域' : 'Region', head: true },
+    { key: 'units_2026', label: c.units, num: true, render: (v) => F.compact(v) },
+    { key: 'yoy_pct', label: c.yoy, num: true, render: (v) => kld.el('span', { class: kld.deltaClass(v), text: F.pct(v) }) },
+    { key: 'revenue_m', label: c.revenue, num: true, render: (v) => F.money(v, 'M') },
+    { key: 'gm_pct', label: c.gm, num: true, render: (v) => v + '%' }
+  ]);
+})();
+</script>
+</body>
+</html>

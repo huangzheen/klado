@@ -1,0 +1,168 @@
+Klado
+Copyright 2026 the Klado authors
+
+This product is licensed under the Apache License, Version 2.0 (the "License"); you may
+not use these files except in compliance with the License. You may obtain a copy of the
+License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the
+License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+either express or implied. See the License for the specific language governing permissions
+and limitations under the License.
+
+
+================================================================================
+Third-party components distributed with this product
+================================================================================
+
+This file satisfies the attribution requirements of the Apache License, Version 2.0,
+Section 4(d), for the Apache-2.0-licensed components distributed with this product.
+Components licensed under MIT, ISC, MPL-2.0, LGPL, the PSF licence or the SIL Open Font
+License are attributed below as well; their full licence texts are retained alongside the
+corresponding files and in third_party/. URLs additionally identify upstream sources.
+
+The complete inventory of third-party components, their versions and their licence terms
+is maintained in THIRD_PARTY_NOTICES.md at the repository root, and is checked by
+api/tests/test_pdf_io.py.
+
+--------------------------------------------------------------------------------
+xlsx-js-style 1.2.0-beta
+https://github.com/gitbrent/xlsx-js-style
+Licensed under the Apache License, Version 2.0
+Distributed as: frontend/out/vendor/xlsx.bundle.js
+
+A fork of SheetJS (https://github.com/SheetJS/sheetjs).
+Copyright (c) SheetJS LLC and contributors.
+Modifications maintained by the xlsx-js-style contributors.
+
+--------------------------------------------------------------------------------
+Remix Icon 4.6.0
+https://github.com/Remix-Design/remixicon
+Licensed under the Apache License, Version 2.0
+Distributed as: frontend/out/remixicon/
+  remixicon.css, remixicon-inline.css, remixicon.woff, remixicon.woff2
+
+Copyright (c) Remix Design and contributors.
+
+--------------------------------------------------------------------------------
+Roboto Condensed
+https://fonts.google.com/specimen/Roboto+Condensed
+Licensed under the Apache License, Version 2.0
+Distributed as: frontend/out/vendor/fonts/roboto-condensed-*.woff2
+License text: frontend/out/vendor/fonts/LICENSE-Roboto-Condensed.txt
+
+Copyright 2011 Google Inc. All Rights Reserved.
+
+The full Apache License, Version 2.0 text is available at
+https://www.apache.org/licenses/LICENSE-2.0
+
+
+================================================================================
+Components whose licences are compatible but require attribution or source access
+================================================================================
+
+--------------------------------------------------------------------------------
+certifi 2026.7.22
+https://github.com/certifi/python-certifi
+Mozilla Public License 2.0
+Distributed as: a Python package inside the container image
+
+Copyright (c) 2015-present certifi Organization
+
+MPL-2.0 is file-level copyleft and is compatible with distributing this product under
+Apache-2.0. MPL-covered files and their modifications remain under MPL-2.0.
+certifi is installed unmodified; its licence text and corresponding release source
+are supplied with this distribution so recipients can exercise their source rights.
+Corresponding release sources: third_party/sources/ (with source URL and SHA-256).
+Source: https://github.com/certifi/python-certifi
+
+--------------------------------------------------------------------------------
+psycopg2-binary 2.9.9
+https://github.com/psycopg/psycopg2
+GNU Lesser General Public License v3 or later (with the OpenSSL exception)
+Distributed as: compiled from the corresponding release source, linked to system libpq
+
+Copyright (c) 2001-2019, Psycopg authors
+
+Klado imports the unmodified module. The OpenSSL exception permits the specified
+OpenSSL linking; it does not waive the other LGPL obligations. Recipients retain
+rights to modify and replace this module and to relink/rebuild their installation.
+Corresponding release sources: third_party/sources/ (with source URL and SHA-256).
+Full module notice and LGPL/GPL licence texts are retained in third_party/runtime/;
+they are also retained at their original installed locations in the container.
+Source: https://github.com/psycopg/psycopg2
+
+
+================================================================================
+MIT / ISC components
+================================================================================
+
+Bootstrap 5.3.0 (MIT) — Copyright 2011-2023 The Bootstrap Authors
+Bootstrap Icons 1.11.1 (MIT) — Copyright 2019-2024 The Bootstrap Authors
+Tabler 1.0.0 (MIT) — Copyright 2018-2025 The Tabler Authors / Paweł Kuna
+Chart.js 4.4.0 (MIT) — Copyright 2014-2023 Chart.js Contributors
+chartjs-plugin-datalabels 2.2.0 (MIT) — Copyright 2017-2022 chartjs-plugin-datalabels contributors
+html2canvas 1.4.1 (MIT) — Copyright (c) 2022 Niklas von Hertzen
+jsPDF 2.5.1 (MIT) — Copyright (c) 2010-2021 James Hall
+marked 15.0.12 (MIT) — Copyright (c) 2011-2025, Christopher Jeffrey
+Mermaid 11.14.0 (MIT) — Copyright (c) 2014-2024 Mermaid contributors
+Lucide 1.14.0 (ISC; Feather-derived icons under MIT) — Copyright (c) Lucide Icons and Contributors,
+  and Copyright (c) 2013-present Cole Bemis for the Feather-derived icons.
+  Full text: frontend/out/vendor/lucide/LICENSE
+
+Python packages under the MIT, BSD, Apache-2.0 and PSF licences are distributed inside
+the container image, each installed unmodified from its release artifact with its own
+licence text inside the package. The complete, generated inventory — every distribution
+actually present in the image, with its version and the licence string recorded in its
+own metadata — is reproduced in THIRD_PARTY_NOTICES.md. That file, not this list, is the
+authoritative record; it is produced by enumerating the installed distributions rather
+than by transcribing package names from memory.
+
+
+================================================================================
+SIL Open Font License 1.1 components
+================================================================================
+
+CoolSans SC Narrow
+Licensed under the SIL Open Font License, Version 1.1
+Distributed as: frontend/out/vendor/fonts/coolsans-sc-narrow-400.woff2
+                frontend/out/vendor/fonts/coolsans-sc-narrow-700.woff2
+License text and derivation notice:
+                frontend/out/vendor/fonts/LICENSE-CoolSans-SC-Narrow.txt
+
+Derived from Noto Sans SC by horizontally scaling all outlines to 88%.
+Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.
+Renamed to avoid the reserved font name, as required by the SIL OFL.
+
+
+================================================================================
+Licence posture
+================================================================================
+
+The complete installed Python inventory is audited in the clean delivery image.
+The current Python inventory has no component blocked by this project's release
+policy. This statement does not cover the Debian operating system or all native
+components: their separate licences, notices and source references are retained
+in third_party/runtime/ and in the original image locations.
+
+Frontend full licence texts and dependency notice supplements are retained in
+third_party/frontend/, with original upstream notices preserved. Font notices are
+retained alongside the fonts. Montserrat uses SIL OFL 1.1; its full text is at
+frontend/out/vendor/fonts/LICENSE-Montserrat.txt.
+
+The standalone agent skill archive has its own applicable NOTICE and a copy of the
+Apache-2.0 LICENSE. It does not bundle the application's third-party runtime.
+
+Native notice supplements
+-------------------------
+third_party/native/ retains release-specific Cargo dependency notices for the
+unmodified cryptography, bcrypt, pydantic-core, watchfiles and jiter wheels,
+including optional/build/platform components, plus the matching OpenSSL notice.
+For multiple-licence alternatives the selected licence is recorded explicitly.
+colored 3.1.1 (MPL-2.0) appears in this conservative source-lock supplement; its
+full corresponding source and original licence/credits accompany the notices.
+The supplement does not claim that every source-lock component is linked.
+CPython's complete interpreter licence is retained in third_party/runtime/,
+with its actual version and official corresponding source URL.

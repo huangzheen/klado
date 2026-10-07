@@ -1,0 +1,2191 @@
+<!DOCTYPE html>
+<html lang="zh" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Klado 管理后台 / Klado admin console</title>
+
+<!-- ⚠️ THIS INLINE BLOCK IS A COPY of `applyTheme()` at the bottom of this file, and the
+     two must change together. It runs before the first paint; without it the console
+     renders in light mode for one frame on every load and then snaps to dark, which is
+     the flash the main app's own rules exist to prevent. A theme switch is not what makes
+     it necessary — this is about the INITIAL load, before any script has run. -->
+<script>
+(function () {
+  try {
+    var stored = localStorage.getItem('klado-admin-theme');
+    var theme = stored || (window.matchMedia &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-bs-theme', theme);
+  } catch (e) { /* private mode: light is a fine default */ }
+})();
+</script>
+
+<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="console.css">
+</head>
+<body>
+
+<!-- ══ SIGN-IN ═══════════════════════════════════════════════════════════════
+     A separate screen, not a page of the shell. The console has its own session
+     and its own audience, so there is no state in which "signed in but showing the
+     login form" is a meaningful thing to render. -->
+<div id="login" hidden>
+  <div class="kd-login">
+    <div class="kd-card kd-login-card">
+      <div class="kd-card-bd">
+        <div class="kd-brandline">
+          <div class="kd-name">Klado 管理后台</div>
+          <div class="kd-tag">企业、账号与部署策略 / Organizations, accounts and deployment policy</div>
+        </div>
+        <div>
+          <label class="kd-label" for="li-email">邮箱 / Email</label>
+          <input id="li-email" class="kd-input" type="email" autocomplete="username"
+                 placeholder="you@company.com" data-i18n-skip>
+        </div>
+        <div>
+          <label class="kd-label" for="li-pass">密码 / Password</label>
+          <input id="li-pass" class="kd-input" type="password" autocomplete="current-password">
+        </div>
+        <div id="li-err" class="kd-note" hidden></div>
+        <button id="li-go" class="kd-btn primary" style="justify-content:center">登录 / Sign in</button>
+        <!-- ⚠️ No `data-i18n-skip` here, and there used to be one. That attribute means
+             "this subtree is USER CONTENT — a name, a pasted value — and splitting it
+             would mangle a person's text", and it is correct on every input below. This
+             is not that: it is a static `中文 / English` pair, so the walker skipped it and
+             the login page showed *both* languages at once. It is the single most common
+             defect in this product (one untranslated neighbour in a translated row reads
+             as two different things), and on the page an operator sees first — while
+             asking for the console to be Chinese by default. -->
+        <div class="kd-help" style="font-size:12px;color:var(--text-3);text-align:center">只有超级管理员可以登录 / Only a super administrator can sign in here</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Shown instead of the login form when `auth.admin_audience_enabled` is off.
+     ⚠️ Its own screen, and it says who can undo it. A login form that cannot work is
+     worse than a message that says why — the operator would sit there retyping a
+     password that is fine. -->
+<div id="throttled" class="kd-throttle" hidden>
+  <div class="kd-card kd-throttle-card">
+    <div class="kd-card-bd" style="display:flex;flex-direction:column;gap:12px">
+      <h2 style="font-size:16px">管理后台登录已关闭</h2>
+      <p style="color:var(--text-2);font-size:13px">
+        Console login is switched off. / 管理后台登录已被关闭，无法在此登录。
+      </p>
+      <p style="color:var(--text-3);font-size:12.5px">
+        A session that is already open keeps working, and the switch can be turned back on
+        from the System page. / 已打开的会话仍然可用，可以在「系统」页重新开启。
+      </p>
+      <button class="kd-btn" onclick="location.reload()">刷新 / Reload</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ THE SHELL ════════════════════════════════════════════════════════════ -->
+<div id="shell" class="kd-shell" hidden>
+
+  <aside class="kd-rail">
+    <div class="kd-rail-hd"><span class="kd-mark">K</span><span data-i18n-skip>Klado 管理后台</span></div>
+    <nav id="nav"></nav>
+    <div class="kd-rail-ft" id="rail-ft"></div>
+  </aside>
+
+  <div class="kd-main">
+    <header class="kd-topbar">
+      <h1 id="pg-title">总览</h1>
+      <span class="kd-sub" id="pg-sub"></span>
+      <span class="kd-sub" id="pg-meta"></span>
+      <span class="kd-grow"></span>
+      <span id="ro-badge"></span>
+      <button class="kd-btn sm ghost" data-lang-toggle>EN</button>
+      <button class="kd-btn sm ghost" id="theme-toggle" title="切换主题 / Switch theme">◐</button>
+      <button class="kd-btn sm" id="do-logout">退出 / Sign out</button>
+    </header>
+
+    <div id="ro-banner" class="kd-banner" hidden>
+      <span class="kd-grow" data-i18n-skip>管理后台当前为只读：所有写操作被拒绝，已打开的会话仍然可以查看全部内容。</span>
+      <span class="kd-grow" style="color:var(--text-2)">The console is read-only; every change is refused while every read still works.</span>
+      <button class="kd-btn sm" id="ro-back">在「系统」页重新开启 / Turn it back on in System</button>
+    </div>
+
+    <div class="kd-body">
+      <!-- ⚠️ Every page container below is a plain `hidden` block. A dialog or a toast
+           nested inside one of them does not render when you are on another page, which
+           is the bug the global overlay rule exists to prevent — so `kldModal` and
+           `kldToasts` live at the end of `<body>`, outside all of them. -->
+      <section id="page-overview"   hidden></section>
+      <section id="page-orgs"       hidden></section>
+      <section id="page-personal"   hidden></section>
+      <section id="page-accounts"   hidden></section>
+      <section id="page-modules"    hidden></section>
+      <section id="page-manual"     hidden></section>
+      <section id="page-skill"      hidden></section>
+      <section id="page-mail"       hidden></section>
+      <section id="page-bin"        hidden></section>
+      <section id="page-audit"      hidden></section>
+      <section id="page-system"     hidden></section>
+    </div>
+  </div>
+</div>
+
+<!-- ══ GLOBAL OVERLAYS — outside every #page-* ═══════════════════════════════ -->
+<div id="modal-root"></div>
+<div id="toasts" class="kd-toasts"></div>
+
+<script src="i18n.js"></script>
+<script>
+'use strict';
+
+/* ═══ shared helpers ═══════════════════════════════════════════════════════════ */
+
+const T = (s) => kladoI18n.t(s);
+
+/** `esc` is not optional. Every value that reaches innerHTML came from a database row
+ *  somebody typed into a form — a display name, an email, an organization name — and
+ *  none of it is trusted. */
+function esc(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+const API = '/api/admin-console';
+
+async function api(path, opts = {}) {
+  const init = Object.assign({ headers: {} }, opts);
+  if (init.body !== undefined && typeof init.body !== 'string') {
+    init.headers['Content-Type'] = 'application/json';
+    init.body = JSON.stringify(init.body);
+  }
+  init.headers['Accept'] = 'application/json';
+  const res = await fetch(API + path, init);
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (e) { data = text; }
+  if (!res.ok) {
+    /* ⚠️ `detail` is an ARRAY for every 422 (FastAPI's validation errors), and
+     * `new Error([{...}])` stringifies it to the literal text `[object Object]`. That is
+     * what a 422 used to show in the toast: a failure with no diagnosable cause, on a
+     * button that looked fine. `msg` is the field FastAPI puts the human sentence in.
+     * The `res.status` prefix is kept so a bare, unparsed response is still identifiable. */
+    const detail = data && data.detail;
+    const text = Array.isArray(detail)
+      ? detail.map((d) => (d && (d.msg || d.message)) || JSON.stringify(d)).join('；')
+      : detail;
+    const err = new Error(text || (res.status + ' ' + res.statusText));
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+function when(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return esc(iso);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+         `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function bytes(n) {
+  if (n == null) return '—';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let i = 0, v = Number(n);
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return v.toFixed(i ? 1 : 0) + ' ' + units[i];
+}
+
+/* ── dialogs ──────────────────────────────────────────────────────────────
+ * A local `kldDialog`, not the main app's. The console may not load code out of
+ * `api/`, so the contract is reimplemented: Esc / scrim / Cancel = cancel, Enter =
+ * confirm, Cmd/Ctrl+Enter in a textarea. ⚠️ The scrim is `z-index: 9700`, above
+ * the drawer (9100) and the scrim behind it (9000) — otherwise "confirm a delete
+ * from inside the detail drawer" is covered by the drawer that opened it, and the
+ * click lands on the drawer.
+ */
+function kldModal({ title, body, ok, danger, input, placeholder, onMount }) {
+  return new Promise((resolve) => {
+    const root = document.getElementById('modal-root');
+    const scrim = document.createElement('div');
+    scrim.className = 'kd-modal-scrim';
+    scrim.innerHTML = `
+      <div class="kd-modal" role="dialog" aria-modal="true">
+        <div class="kd-modal-hd">${esc(T(title))}</div>
+        <div class="kd-modal-bd">
+          <div>${body || ''}</div>
+          ${input === undefined ? '' :
+            `<input id="kd-mi" class="kd-input" style="margin-top:12px"
+                    placeholder="${esc(placeholder || '')}">`}
+        </div>
+        <div class="kd-modal-ft">
+          <button class="kd-btn" data-x="no">取消 / Cancel</button>
+          <button class="kd-btn ${danger ? 'danger' : 'primary'}" data-x="yes">${esc(T(ok))}</button>
+        </div>
+      </div>`;
+    root.appendChild(scrim);
+    const field = scrim.querySelector('#kd-mi');
+    if (field) field.focus();
+    if (onMount) onMount(scrim);
+
+    function close(value) {
+      document.removeEventListener('keydown', onKey, true);
+      scrim.remove();
+      resolve(value);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(null); }
+      else if (e.key === 'Enter' && !(e.metaKey || e.ctrlKey)) {
+        e.preventDefault(); e.stopPropagation();
+        close(field ? field.value : true);
+      }
+    }
+    document.addEventListener('keydown', onKey, true);
+    scrim.addEventListener('click', (e) => {
+      if (e.target === scrim) return close(null);
+      const x = e.target.closest('[data-x]');
+      if (x) return close(x.dataset.x === 'yes' ? (field ? field.value : true) : null);
+    });
+  });
+}
+
+const kldConfirm = (title, body, ok, danger) =>
+  kldModal({ title, body, ok: ok || '确定 / Confirm', danger: !!danger });
+
+const kldPrompt = (title, body, ok, placeholder) =>
+  kldModal({ title, body, ok: ok || '确定 / Confirm', input: true, placeholder });
+
+/* ⚠️ `alert()` is never used here, and never in any new code. A native dialog cannot be
+ * styled, cannot be translated by `i18n.js`, and cannot be read in a screenshot. Almost
+ * every call site is an error message, which is what a toast is for. */
+function kldNotify(msg, kind) {
+  const box = document.getElementById('toasts');
+  const el = document.createElement('div');
+  el.className = 'kd-toast ' + (kind === 'err' ? 'err' : 'ok');
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(() => el.remove(), kind === 'err' ? 9000 : 4000);
+}
+
+function kldFail(err) {
+  kldNotify(T('操作失败 / Something went wrong') + '：' + (err.message || err), 'err');
+  console.error(err);
+}
+
+/* ── theme ──────────────────────────────────────────────────────────────── */
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  document.documentElement.setAttribute('data-bs-theme', theme);
+  try { localStorage.setItem('klado-admin-theme', theme); } catch (e) { /* ignore */ }
+  const btn = document.getElementById('theme-toggle');
+  /* The button shows the theme it will switch TO, not the current one — the same rule
+   * the main app uses. A button labelled with the current state makes people press it
+   * twice. */
+  if (btn) btn.textContent = theme === 'light' ? '☾' : '☀';
+  if (state.theme !== theme) { state.theme = theme; render(); }
+}
+document.getElementById('theme-toggle').addEventListener('click', () => {
+  const now = document.documentElement.getAttribute('data-theme');
+  applyTheme(now === 'dark' ? 'light' : 'dark');
+});
+
+/* ═══ application state ══════════════════════════════════════════════════════ */
+
+const state = {
+  user: null,
+  readOnly: false,
+  page: 'overview',
+  theme: document.documentElement.getAttribute('data-theme') || 'light',
+  cache: {},
+};
+
+/* The console's own copy of the module / scope vocabularies is a *rendering* concern
+ * only; the API is the authority. A value the API invents renders as its raw key rather
+ * than as a blank, so a new option is visible before anybody has taught the page about
+ * it. */
+const LABELS = {
+  internal: '仅企业内部 / inside the company only',
+  external: '任意合法邮箱 / any valid address',
+  global:   '与个人用户同权 / same reach as a personal user',
+  forbid:   '禁止 / forbidden',
+  approve:  '需逐份审批 / approve each document',
+  allow:    '不限 / no approval needed',
+  active:   '正常 / active',
+  suspended:'已停用 / suspended',
+  invited:  '已邀请 / invited',
+  disabled: '已停用 / disabled',
+  owner:    '归属人 / owner',
+  admin:    '管理员 / administrator',
+  member:   '成员 / member',
+  user:     '普通用户 / user',
+  pending:  '待审批 / pending',
+  approved: '已批准 / approved',
+  denied:   '已拒绝 / denied',
+  revoked:  '已收回 / revoked',
+  anyone_link: '免登录链接 / anyone-link',
+  public:   '公开发布 / publish publicly',
+  report:   '报告 / report',
+  knowledge:'知识 / knowledge',
+  calendar: '日历 / calendar',
+  file:     '文件 / file',
+  enterprise: '企业 / enterprise',
+  personal:   '个人 / personal',
+  browser: '浏览器 / browser',
+  agent:   'Agent 授权码 / agent code',
+};
+const label = (k) => LABELS[k] || (k == null ? '—' : String(k));
+
+function badge(kind, text) {
+  return `<span class="kd-badge ${kind || ''}">${esc(text)}</span>`;
+}
+
+/* ⚠️ Must stay in step with `klado_shared/accounts.py::AGENT_TOKEN_PREFIX`. The mask is
+ * built from it, and a drifted prefix would render a code that looks like garbage. The
+ * pairing is asserted by `api/tests/test_agent_code_storage.py`. */
+const AGENT_CODE_PREFIX = 'klado_agent_';
+
+/* An access code is 55 characters. Printing all of it turns the accounts table into a
+ * wall of base64 nobody can scan or compare, so the row shows the prefix, a fixed run of
+ * dots, and the **tail** — the last four characters are what tell two codes apart when
+ * somebody reads one out over a call. The full value is what the copy button yields. */
+function maskAgentCode(code) {
+  if (!code) return '';
+  return AGENT_CODE_PREFIX + '•'.repeat(8) + code.slice(-4);
+}
+
+const COPY_ICON =
+  '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" ' +
+  'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<rect x="5.5" y="5.5" width="8" height="9" rx="1.5"/>' +
+  '<path d="M10.5 3.5v-1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h1"/></svg>';
+
+/* ⚠️ Two paths, and the first one is not optional decoration: the console is served over
+ * plain http on a LAN address, which is NOT a secure context, so `navigator.clipboard` is
+ * simply absent there and a button that only calls it does nothing at all — with no error,
+ * because the rejection never happens; the object is just missing. `execCommand` is the
+ * only thing that works on `http://192.168.x.x`, deprecated and ugly, and it is the path
+ * that actually runs in the deployment this ships to. */
+async function copyToClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (err) { /* fall through */ }
+  }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0';
+  document.body.appendChild(ta);
+  try {
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    return document.execCommand('copy');
+  } catch (err) {
+    return false;
+  } finally {
+    document.body.removeChild(ta);
+  }
+}
+
+function statusBadge(status) {
+  const map = { active: 'ok', suspended: 'danger', invited: 'warn', disabled: 'danger',
+                approved: 'ok', denied: 'danger', revoked: 'danger', pending: 'warn' };
+  return badge(map[status], label(status));
+}
+
+function emptyRow(cols, text) {
+  return `<tr><td colspan="${cols}" class="kd-empty">${esc(T(text))}</td></tr>`;
+}
+
+/* ═══ navigation ══════════════════════════════════════════════════════════════ */
+
+const PAGES = [
+  { key: 'overview', zh: '总览',       en: 'Overview',      sub: '安装概况 / at a glance' },
+  { key: 'orgs',     zh: '企业',       en: 'Organizations', sub: '公司、档位与审批 / companies, scopes and approvals' },
+  { key: 'personal', zh: '个人用户',   en: 'Personal users',sub: '自助注册与域名黑名单 / self-registration and the domain blocklist' },
+  { key: 'accounts', zh: '账号',       en: 'Accounts',      sub: '账号与 Agent 授权码 / accounts and agent codes' },
+  { key: 'modules',  zh: '模块',       en: 'Modules',       sub: '部署级默认 / the deployment default' },
+  { key: 'manual',   zh: '项目说明书', en: 'Agent manual',  sub: 'agent 运行时读到的规则 / the rules an agent reads at runtime' },
+  { key: 'skill',    zh: 'Agent Skill', en: 'Agent Skill', sub: '发给外部 agent 的技能包 / the package handed to an outside agent' },
+  { key: 'mail',     zh: '系统邮箱',   en: 'System mail',   sub: 'SMTP 配置 / SMTP settings' },
+  { key: 'bin',      zh: '回收站',     en: 'Recycle bin',   sub: '待清除的账号 / accounts awaiting erasure' },
+  { key: 'audit',    zh: '审计',       en: 'Audit',         sub: '谁做了什么 / who did what' },
+  { key: 'system',   zh: '系统',       en: 'System',        sub: '进程状态与开关 / process state and switches' },
+];
+
+function pageTitle(p) { return kladoI18n.currentLang() === 'en' ? p.en : p.zh; }
+function pageSub(p) { return kladoI18n.currentLang() === 'en' ? p.sub.split(' / ')[1] : p.sub.split(' / ')[0]; }
+
+/** The one number a page wants in the title bar, or ''. It is cleared on every
+ * navigation, so a page that stops having a number cannot leave a stale one behind.
+ *
+ * ⚠️ This replaces the 说明书 page's row of stat cards (user, 2026-10-03: 「我给你的这部分
+ * 都不需要」). Those cards were not wrong — 19 / 1 / 144.0 KB were all true — but three
+ * cards whose every value is a constant or a sum the reader cannot act on sit above the
+ * thing they came to read. The one number worth keeping (正文总量) belongs next to the
+ * title, where it says something about the page you are on. */
+function pageMeta(p) {
+  if (p.key === 'manual') {
+    const t = state.cache.manual && state.cache.manual.summary
+      && state.cache.manual.summary.totals;
+    return t ? T('正文总量') + ' ' + kkBytes(t.total_chars) : '';
+  }
+  if (p.key === 'skill') {
+    const s = state.cache.skill && state.cache.skill.summary;
+    if (!s) return '';
+    if (!s.built) return T('未构建 / not built');
+    return `${T('技能包 / package')} ${kkBytes(s.zip_bytes)} · `
+      + `${s.entries} ${T('个文件 / files')}`;
+  }
+  return '';
+}
+
+/* The pages whose panes scroll on their own, and which therefore take the height the
+ * window has instead of a percentage of it. See `console.css`'s "reader pages fill the
+ * window" block for the measurements. */
+const FILL_PAGES = new Set(['manual', 'skill']);
+
+function setPageMeta(p) {
+  document.getElementById('pg-meta').textContent = p ? pageMeta(p) : '';
+}
+
+function renderNav() {
+  const pending = (state.cache.overview && state.cache.overview.approvals.pending) || 0;
+  document.getElementById('nav').innerHTML = PAGES.map((p) => `
+    <button data-page="${p.key}" class="${state.page === p.key ? 'on' : ''}">
+      <span>${esc(pageTitle(p))}</span>
+      ${p.key === 'orgs' && pending ? `<span class="kd-count">${pending}</span>` : ''}
+    </button>`).join('');
+  document.querySelectorAll('#nav button').forEach((b) => {
+    b.addEventListener('click', () => go(b.dataset.page));
+  });
+}
+
+async function go(key) {
+  state.page = key;
+  PAGES.forEach((p) => {
+    document.getElementById('page-' + p.key).hidden = (p.key !== key);
+  });
+  const meta = PAGES.find((p) => p.key === key);
+  document.getElementById('pg-title').textContent = pageTitle(meta);
+  document.getElementById('pg-sub').textContent = pageSub(meta);
+  setPageMeta(meta);
+  document.getElementById('shell').classList.toggle('kd-shell--fill', FILL_PAGES.has(key));
+  renderNav();
+  await render();
+  try { history.replaceState(null, '', '#' + key); } catch (e) { /* ignore */ }
+}
+
+async function render() {
+  const fn = ({
+    overview: renderOverview, orgs: renderOrgs, personal: renderPersonal,
+    accounts: renderAccounts, modules: renderModules, manual: renderManual,
+    skill: renderSkill,
+    mail: renderMail, bin: renderBin, audit: renderAudit, system: renderSystem,
+  })[state.page];
+  if (!fn) return;
+  const host = document.getElementById('page-' + state.page);
+  try { await fn(host); }
+  catch (err) {
+    host.innerHTML = `<div class="kd-card"><div class="kd-card-bd">
+      <div class="kd-note">${esc(T('加载失败 / Could not load'))}：${esc(err.message || err)}</div>
+    </div></div>`;
+    kldFail(err);
+  }
+}
+
+/* ═══ 1. overview ════════════════════════════════════════════════════════════ */
+
+async function renderOverview(host) {
+  const d = state.cache.overview || (state.cache.overview = await api('/overview'));
+  const stat = (n, cap, alert) =>
+    `<div class="kd-stat${alert ? ' alert' : ''}"><div class="kd-num">${esc(n)}</div>
+     <div class="kd-cap">${esc(cap)}</div></div>`;
+  host.innerHTML = `
+    <div class="kd-stats">
+      ${stat(d.orgs.enterprises, T('企业 / Organizations'))}
+      ${stat(d.orgs.personal_users, T('个人用户 / Personal users'))}
+      ${stat(d.members.total, T('成员总数 / Members'))}
+      ${stat(d.members.invited, T('待接受邀请 / Invitations pending'), d.members.invited > 0)}
+      ${stat(d.approvals.pending, T('待审批 / Approvals pending'), d.approvals.pending > 0)}
+      ${stat(d.recycle_bin.waiting, T('回收站 / In the bin'))}
+      ${stat(d.recycle_bin.due_now, T('今天到期 / Due for erasure'), d.recycle_bin.due_now > 0)}
+      ${stat(d.orgs.suspended, T('已停用企业 / Suspended'), d.orgs.suspended > 0)}
+    </div>
+
+    <div class="kd-card">
+      <div class="kd-card-hd">
+        <h2>${esc(T('黑名单域名 / Blocked sign-up domains'))}</h2>
+        <span class="kd-sub">${d.policy.blocked_email_domains.length} ${esc(T('个 / domains'))}</span>
+        <span class="kd-grow"></span>
+        <button class="kd-btn sm" data-go="personal">${esc(T('编辑 / Edit'))}</button>
+      </div>
+      <div class="kd-card-bd">
+        <div class="kd-note">${esc(d.policy.blocked_email_domains.length ? '' : '')}${esc(
+          T('这不是安全边界：它只挡住「用公共邮箱另开一个个人身份」，挡不住任何数据外流。')
+        )}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">
+          ${d.policy.blocked_email_domains.map((x) => badge('', esc(x))).join('') ||
+            '<span class="kd-empty">—</span>'}
+        </div>
+      </div>
+    </div>
+
+    <div class="kd-card">
+      <div class="kd-card-hd"><h2>${esc(T('部署状态 / Deployment state'))}</h2></div>
+      <div class="kd-card-bd">
+        <div class="kd-mono" style="color:var(--text-2);line-height:1.9">
+          ${esc(T('生成时间 / Generated'))}: ${esc(when(d.generated_at))}<br>
+          ${esc(T('管理后台 / Console'))}: ${d.policy.read_only
+            ? esc(T('只读 / read-only')) : esc(T('可写 / writable'))}<br>
+          ${esc(T('待审批企业 / Organizations with pending requests'))}: ${
+            esc(d.approvals.by_org.join(', ') || '—')}
+        </div>
+      </div>
+    </div>`;
+  host.querySelectorAll('[data-go]').forEach((b) =>
+    b.addEventListener('click', () => go(b.dataset.go)));
+}
+
+/* ═══ 2. organizations ═══════════════════════════════════════════════════════ */
+
+async function renderOrgs(host) {
+  const kind = state.cache.orgKind || '';
+  const d = state.cache.orgs || (state.cache.orgs = await api('/orgs?limit=500' +
+    (kind ? '&kind=' + encodeURIComponent(kind) : '')));
+  const rows = d.orgs;
+
+  host.innerHTML = `
+    <div class="kd-card">
+      <div class="kd-card-hd">
+        <h2>${esc(T('企业 / Organizations'))}</h2>
+        <span class="kd-sub">${rows.length}</span>
+        <span class="kd-grow"></span>
+        <select class="kd-select" id="org-kind" style="width:auto">
+          <option value="">${esc(T('全部 / All'))}</option>
+          <option value="enterprise"${kind === 'enterprise' ? ' selected' : ''}>${esc(T('企业 / enterprise'))}</option>
+          <option value="personal"${kind === 'personal' ? ' selected' : ''}>${esc(T('个人 / personal'))}</option>
+        </select>
+        <input class="kd-input" id="org-q" style="width:264px" data-i18n-skip
+               placeholder="搜索企业或成员 / search">
+        <button class="kd-btn sm" id="org-q-go">${esc(T('搜索 / Search'))}</button>
+      </div>
+      <div class="kd-card-bd tight">
+        <table class="kd-table">
+          <thead><tr>
+            <th>${esc(T('名称 / Name'))}</th>
+            <th>${esc(T('后缀 / Suffixes'))}</th>
+            <th>${esc(T('定向分享 / Share scope'))}</th>
+            <th>${esc(T('对外公开 / Public scope'))}</th>
+            <th class="kd-num">${esc(T('成员 / Members'))}</th>
+            <th class="kd-num">${esc(T('管理员 / Admins'))}</th>
+            <th class="kd-num">${esc(T('待审批 / Pending'))}</th>
+            <th>${esc(T('状态 / Status'))}</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${rows.length ? rows.map(orgRow).join('') :
+            emptyRow(9, '还没有企业 / No organizations yet')}</tbody>
+        </table>
+      </div>
+    </div>`;
+
+  const filter = () => {
+    const q = document.getElementById('org-q').value.trim();
+    api('/orgs?limit=500' + (kind ? '&kind=' + encodeURIComponent(kind) : '') +
+        (q ? '&q=' + encodeURIComponent(q) : ''))
+      .then((d2) => { state.cache.orgs = d2; render(); })
+      .catch(kldFail);
+  };
+  document.getElementById('org-kind').addEventListener('change', (e) => {
+    state.cache.orgKind = e.target.value; state.cache.orgs = null; render();
+  });
+  document.getElementById('org-q-go').addEventListener('click', filter);
+  document.getElementById('org-q').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') filter();
+  });
+  host.querySelectorAll('[data-open]').forEach((b) =>
+    b.addEventListener('click', () => openOrg(Number(b.dataset.open))));
+}
+
+function orgRow(o) {
+  return `<tr>
+    <td><strong>${esc(o.name)}</strong><div class="kd-meta kd-mono">${esc(o.slug)}</div></td>
+    <td>${(o.email_domains || []).length
+        ? (o.email_domains || []).map((x) => badge('', esc(x))).join(' ')
+        : '<span style="color:var(--text-3)">—</span>'}</td>
+    <td>${esc(label(o.share_scope))}</td>
+    <td>${esc(label(o.public_scope))}</td>
+    <td class="kd-num">${o.members}</td>
+    <td class="kd-num">${o.admins}</td>
+    <td class="kd-num">${o.pending_approvals || 0}</td>
+    <td>${statusBadge(o.status)}</td>
+    <td style="text-align:right">
+      <button class="kd-btn sm" data-open="${o.id}">${esc(T('打开 / Open'))}</button>
+    </td>
+  </tr>`;
+}
+
+function modSwitches(detail) {
+  /* One switch per SWITCHABLE module, ticked when the company is licensed for it.
+   * ⚠️ A module the deployment has withdrawn is shown DISABLED and unticked rather than
+   * hidden: an operator who has licensed a company for four modules and then turns one
+   * of them off at the deployment level must be able to see that the company's licence
+   * still names it, or the answer to "why does this company not have Calendar" is
+   * nowhere on the screen. */
+  const lic = new Set(detail.module_licence || []);
+  const dep = new Set(detail.deployment_default || []);
+  const rows = (detail.catalogue || []).filter((m) => m.toggleable);
+  if (!rows.length) return '<span class="kd-empty">—</span>';
+  return rows.map((m) => {
+    const live = dep.has(m.key);
+    const on = lic.has(m.key);
+    return `<div class="kd-mod">
+      <div class="kd-grow">
+        <div class="kd-title">${esc(kladoI18n.currentLang() === 'en' ? m.label_en : m.label_zh)}</div>
+        <div class="kd-meta">${esc(m.key)}${live ? '' : ' · ' + esc(T('部署未开放 / not offered by the deployment'))}</div>
+      </div>
+      <button class="kd-switch" role="switch" data-orgmod="${m.key}"
+              aria-checked="${on}" ${live || state.readOnly ? 'disabled' : ''}></button>
+    </div>`;
+  }).join('');
+}
+
+async function openOrg(id) {
+  const scrim = document.createElement('div');
+  scrim.className = 'kd-scrim';
+  const drawer = document.createElement('div');
+  drawer.className = 'kd-drawer';
+  drawer.innerHTML = `<div class="kd-drawer-bd">${esc(T('加载中 / Loading…'))}</div>`;
+  document.body.appendChild(scrim);
+  document.body.appendChild(drawer);
+  const close = () => { scrim.remove(); drawer.remove(); };
+  scrim.addEventListener('click', close);
+
+  let org, detail;
+  try {
+    [org, detail] = await Promise.all([api('/orgs/' + id), api('/orgs/' + id)]);
+  } catch (err) { close(); return kldFail(err); }
+
+  const o = detail.org;
+  const domains = (o.email_domains || []).join('\n');
+
+  function paint() {
+    drawer.innerHTML = `
+      <div class="kd-drawer-hd">
+        <h2>${esc(o.name)}</h2>
+        ${statusBadge(o.status)}
+        <button class="kd-btn sm ghost" data-x="close">✕</button>
+      </div>
+      <div class="kd-drawer-bd">
+        <div class="kd-field">
+          <label class="kd-label">${esc(T('名称 / Name'))}</label>
+          <input class="kd-input" id="o-name" value="${esc(o.name)}" data-i18n-skip>
+          <div class="kd-help">${esc(T('标识 slug 不可修改：它已经在所有已发出的分享链接里 / The slug is fixed: it is already inside every share link that was handed out'))} <span class="kd-mono">${esc(o.slug)}</span></div>
+        </div>
+
+        <div class="kd-field">
+          <label class="kd-label">${esc(T('注册邮箱后缀 / Email suffixes'))}</label>
+          <textarea class="kd-textarea" id="o-domains" data-i18n-skip>${esc(domains)}</textarea>
+          <div class="kd-help">${esc(T('一行一个。至少保留一个，清空会把企业锁在自己外面。 / One per line. At least one: clearing the list locks the company out of its own administration.'))}</div>
+        </div>
+
+        <div class="kd-field">
+          <label class="kd-label">${esc(T('三个预设 / The three presets'))}</label>
+          <div class="kd-presets" id="o-presets">
+            ${['internal', 'external', 'global'].map((p) =>
+              `<button class="kd-preset${o.share_scope === p ? ' on' : ''}" data-preset="${p}">${esc(label(p))}</button>`
+            ).join('')}
+          </div>
+          <div class="kd-help">${esc(T('预设只是同时写两个开关，不是第四种状态。 / A preset writes both switches at once; it is not a fourth state.'))}</div>
+        </div>
+
+        <div class="kd-scopes">
+          <div class="kd-field">
+            <label class="kd-label">${esc(T('定向分享 / Share scope'))}</label>
+            <select class="kd-select" id="o-share">
+              ${['internal', 'external', 'global'].map((v) =>
+                `<option value="${v}"${o.share_scope === v ? ' selected' : ''}>${esc(label(v))}</option>`).join('')}
+            </select>
+          </div>
+          <div class="kd-field">
+            <label class="kd-label">${esc(T('对外公开 / Public scope'))}</label>
+            <select class="kd-select" id="o-public">
+              ${['forbid', 'approve', 'allow'].map((v) =>
+                `<option value="${v}"${o.public_scope === v ? ' selected' : ''}>${esc(label(v))}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="kd-note info">${esc(T(
+          '调严只影响之后的行为：已经发出去的链接与已经批准的公开不会被收回，每一条授权都是一条独立的记录。'
+        ))}</div>
+
+        <div class="kd-field">
+          <label class="kd-label">${esc(T('本企业可用模块 / Modules this company may offer'))}</label>
+          <div class="kd-matrix" id="o-modules">
+            ${modSwitches(detail)}
+          </div>
+          <div class="kd-help">${esc(T(
+            '决定这家企业的管理员在「成员」行里能给谁勾哪些模块。全部关掉 = 这家企业一个可开关模块都没有（登录、收件箱、设置、数据中心是系统必需的，不在此列）。它只能收窄，不能放宽部署级默认。 / This is what the company\'s own administrators can tick for their members. Ticking nothing means the company has no switchable module at all (sign-in, inbox, settings and data center are required infrastructure and are not listed). It can only narrow the deployment default, never widen it.'
+          ))}</div>
+          <div class="kd-help" id="o-modules-offer"></div>
+        </div>
+
+        <div class="kd-field">
+          <label class="kd-label">${esc(T('转移归属人 / Transfer ownership'))}</label>
+          <div style="display:flex;gap:8px">
+            <input class="kd-input" id="o-transfer" data-i18n-skip placeholder="member@company.com">
+            <button class="kd-btn" id="o-transfer-go" ${state.readOnly ? 'disabled' : ''}>${esc(T('转移 / Transfer'))}</button>
+          </div>
+          <div class="kd-help">${esc(T('只能转给本企业一位「正常」状态的成员。 / Only to an ACTIVE member of this organization.'))}</div>
+        </div>
+
+        <div class="kd-field">
+          <label class="kd-label">${esc(T('管理员 / Administrators'))}</label>
+          <div>${detail.admins.map((a) =>
+            `<div style="display:flex;gap:8px;align-items:center;padding:4px 0">
+               ${esc(a.email)} ${a.org_role === 'owner' ? badge('info', esc(T('归属人 / owner'))) : ''}
+             </div>`).join('') || '<span class="kd-empty">—</span>'}</div>
+        </div>
+
+        <div class="kd-field">
+          <label class="kd-label">${esc(T('成员 / Members'))}</label>
+          <table class="kd-table"><tbody>
+            ${detail.members.map((m) => `<tr>
+              <td>${esc(m.email)}${m.domain_ok === false
+                ? ' ' + badge('warn', esc(T('后缀不符 / suffix mismatch'))) : ''}</td>
+              <td>${esc(label(m.org_role))}</td>
+              <td>${statusBadge(m.status)}</td>
+            </tr>`).join('') || emptyRow(3, '—')}
+          </tbody></table>
+        </div>
+
+        <div class="kd-field">
+          <label class="kd-label">${esc(T('对外发布审批 / Publication approvals'))}</label>
+          <div id="o-approvals">${esc(T('加载中 / Loading…'))}</div>
+        </div>
+      </div>
+      <div class="kd-drawer-ft">
+        <button class="kd-btn" data-x="close">${esc(T('关闭 / Close'))}</button>
+        ${o.status === 'active'
+          ? `<button class="kd-btn" id="o-suspend" ${state.readOnly ? 'disabled' : ''}>${esc(T('停用企业 / Suspend'))}</button>`
+          : `<button class="kd-btn" id="o-resume" ${state.readOnly ? 'disabled' : ''}>${esc(T('恢复 / Resume'))}</button>`}
+        <button class="kd-btn primary" id="o-save" ${state.readOnly ? 'disabled' : ''}>${esc(T('保存 / Save'))}</button>
+      </div>`;
+
+    drawer.querySelectorAll('[data-x="close"]').forEach((b) => b.addEventListener('click', close));
+    drawer.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click',
+      () => { applyPreset(b.dataset.preset, close); }));
+
+    /* The module switches are read straight off the DOM at save time rather than kept in
+     * a mirror object: `paint()` re-renders the whole drawer, and a mirror captured in
+     * the enclosing scope would still be holding the PREVIOUS render's state. */
+    const orgMods = () => Array.from(drawer.querySelectorAll('[data-orgmod]'))
+      .filter((b) => b.getAttribute('aria-checked') === 'true')
+      .map((b) => b.dataset.orgmod);
+    drawer.querySelectorAll('[data-orgmod]').forEach((b) => b.addEventListener('click', () => {
+      b.setAttribute('aria-checked', String(b.getAttribute('aria-checked') !== 'true'));
+    }));
+    /* The live summary, recomputed on every click. A static one would be wrong the
+     * moment the operator toggles a box — and this line is the only place that says what
+     * the company will ACTUALLY be able to hand out, as opposed to what is ticked. */
+    const offerLine = () => {
+      const el = drawer.querySelector('#o-modules-offer');
+      if (!el) return;
+      const picked = orgMods();
+      el.textContent = kladoI18n.currentLang() === 'en'
+        ? 'After saving this company can tick: ' + (picked.length ? picked.join(', ') : 'nothing')
+        : '保存后这家企业可勾选的模块：' + (picked.length ? picked.join('、') : '（一个都没有）');
+    };
+    drawer.querySelectorAll('[data-orgmod]').forEach((b) =>
+      b.addEventListener('click', offerLine));
+    offerLine();
+
+    drawer.querySelector('#o-save').addEventListener('click', async () => {
+      try {
+        await api('/orgs/' + id, { method: 'PATCH', body: {
+          name: drawer.querySelector('#o-name').value,
+          email_domains: drawer.querySelector('#o-domains').value
+            .split('\n').map((s) => s.trim()).filter(Boolean),
+          share_scope: drawer.querySelector('#o-share').value,
+          public_scope: drawer.querySelector('#o-public').value,
+        }});
+        /* ⚠️ The licence goes in its OWN request, not as a field on the form above. The
+         * list is written even when empty — `[]` is "this company has no switchable
+         * module", and an omitted key means "leave it alone", so folding it into the
+         * PATCH would make the button unable to say that. It also means a refused
+         * licence (a typo, a required module) does not take the company name down with
+         * it: the form has already saved, and the refusal names the module. */
+        await api('/orgs/' + id + '/modules', { method: 'PUT', body: { keys: orgMods() } });
+        state.cache.orgs = null;
+        kldNotify(T('已保存 / Saved'), 'ok');
+        close();
+        await render();
+      } catch (err) { kldFail(err); }
+    });
+
+    const toggle = async (status) => {
+      const verb = status === 'suspended' ? T('停用这家企业？它会停止接受新成员。')
+        : T('恢复这家企业？');
+      if (!await kldConfirm(T('更改企业状态 / Change status'), esc(verb),
+                           status === 'suspended' ? T('停用 / Suspend') : T('恢复 / Resume'),
+                           status === 'suspended')) return;
+      try {
+        await api('/orgs/' + id, { method: 'PATCH', body: { status } });
+        state.cache.orgs = null;
+        kldNotify(T('已更新 / Updated'), 'ok');
+        close();
+        await render();
+      } catch (err) { kldFail(err); }
+    };
+    const sb = drawer.querySelector('#o-suspend');
+    const rb = drawer.querySelector('#o-resume');
+    if (sb) sb.addEventListener('click', () => toggle('suspended'));
+    if (rb) rb.addEventListener('click', () => toggle('active'));
+
+    drawer.querySelector('#o-transfer-go').addEventListener('click', async () => {
+      const email = drawer.querySelector('#o-transfer').value.trim();
+      if (!email) return;
+      const ok = await kldPrompt(T('转移归属人 / Transfer ownership'),
+        esc(T('把这家企业的「归属人」转给下面这个地址。对方必须是本企业正常状态的成员。')),
+        T('转移 / Transfer'), email);
+      if (!ok) return;
+      try {
+        await api('/orgs/' + id + '/transfer', { method: 'POST', body: { email: ok } });
+        state.cache.orgs = null;
+        kldNotify(T('已转移 / Transferred'), 'ok');
+        close();
+        await render();
+      } catch (err) { kldFail(err); }
+    });
+
+    loadApprovals(id, drawer.querySelector('#o-approvals'), close);
+  }
+
+  async function loadApprovals(id, box, close) {
+    try {
+      const d = await api(`/orgs/${id}/approvals?status=pending`);
+      if (!d.approvals.length) {
+        box.innerHTML = `<div class="kd-empty">${esc(T('没有待审批的对外发布 / Nothing waiting for approval'))}</div>`;
+        return;
+      }
+      box.innerHTML = `<table class="kd-table"><tbody>` + d.approvals.map((a) => `
+        <tr>
+          <td>${esc(label(a.target_type))} <span class="kd-mono">${esc(a.target_id)}</span>
+              <div class="kd-meta">${esc(label(a.kind))} · ${esc(a.requester_email)}</div>
+              <div class="kd-meta">${esc(when(a.created_at))}</div></td>
+          <td style="text-align:right;white-space:nowrap">
+            <button class="kd-btn sm danger" data-dec="revoked" data-id="${a.id}">${esc(T('收回 / Revoke'))}</button>
+            <button class="kd-btn sm primary" data-dec="approved" data-id="${a.id}">${esc(T('代批 / Approve'))}</button>
+          </td>
+        </tr>`).join('') + `</tbody></table>`;
+      box.querySelectorAll('[data-dec]').forEach((b) => b.addEventListener('click',
+        async () => {
+          const dec = b.dataset.dec;
+          const ok = await kldConfirm(
+            T('决定这份申请 / Decide this request'),
+            esc(T('确认对这份文档的对外发布做出决定？这个动作会记入审计日志。')),
+            dec === 'approved' ? T('批准 / Approve') : T('收回 / Revoke'),
+            dec !== 'approved');
+          if (!ok) return;
+          try {
+            await api(`/orgs/approvals/${b.dataset.id}/${dec}`, { method: 'POST' });
+            state.cache.overview = null; state.cache.orgs = null;
+            kldNotify(T('已记录 / Recorded'), 'ok');
+            close(); await render();
+          } catch (err) { kldFail(err); }
+        }));
+    } catch (err) {
+      box.innerHTML = `<div class="kd-note">${esc(err.message || err)}</div>`;
+    }
+  }
+
+  async function applyPreset(name, close) {
+    try {
+      await api(`/orgs/${id}/preset`, { method: 'PUT', body: { preset: name } });
+      state.cache.orgs = null;
+      kldNotify(T('已应用预设 / Preset applied'), 'ok');
+      close(); await render();
+    } catch (err) { kldFail(err); }
+  }
+
+  paint();
+}
+
+/* ═══ 3. personal users ══════════════════════════════════════════════════════ */
+
+async function renderPersonal(host) {
+  const [users, block] = await Promise.all([
+    api('/personal?limit=1000'), api('/personal/blocked-domains'),
+  ]);
+  host.innerHTML = `
+    <div class="kd-card">
+      <div class="kd-card-hd">
+        <h2>${esc(T('自助注册黑名单 / Sign-up blocklist'))}</h2>
+        <span class="kd-grow"></span>
+        <button class="kd-btn sm primary" id="bl-save" ${state.readOnly ? 'disabled' : ''}>${esc(T('保存 / Save'))}</button>
+      </div>
+      <div class="kd-card-bd">
+        <div class="kd-note">${esc(T(
+          '⚠️ 这不是安全边界：它只挡住「用公共邮箱另开一个个人身份」，挡不住任何数据外流（拉取 / 下载是数据权利，不看账号状态）。'
+        ))}</div>
+        <div style="margin-top:12px">
+          <label class="kd-label">${esc(T('域名，一行一个 / Domains, one per line'))}</label>
+          <textarea class="kd-textarea" id="bl-text" data-i18n-skip
+            style="min-height:120px">${esc(block.domains.join('\n'))}</textarea>
+          <div class="kd-help">${esc(T(
+            '保存后返回的是「实际生效」的列表：写错的行会被丢掉并在这里显示出来。 / What comes back is the list now in force — a line that could not be parsed is dropped and shown to you.'
+          ))}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">
+          ${block.domains.map((d) => `${badge(block.counts[d] ? 'warn' : '',
+            esc(d) + (block.counts[d] ? ` · ${block.counts[d]}` : ''))}`).join('')}
+        </div>
+        <div class="kd-help" style="margin-top:8px">${esc(T(
+          '徽标上的数字是「已经在这个域名上注册、且黑名单加上去之后仍然存在」的个人用户数——加黑名单不会关掉已有账号。 / The number on a badge is how many personal accounts already exist on that domain; adding a domain does not close them.'
+        ))}</div>
+        <div class="kd-field" style="margin-top:12px;max-width:420px">
+          <label class="kd-label">${esc(T('检查一个域名 / Check a domain'))}</label>
+          <div style="display:flex;gap:8px">
+            <input class="kd-input" id="bl-probe" data-i18n-skip placeholder="gmail.com">
+            <button class="kd-btn" id="bl-probe-go">${esc(T('检查 / Check'))}</button>
+          </div>
+          <div class="kd-help" id="bl-probe-out"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kd-card">
+      <div class="kd-card-hd">
+        <h2>${esc(T('个人用户 / Personal users'))}</h2>
+        <span class="kd-sub">${users.users.length}</span>
+      </div>
+      <div class="kd-card-bd tight">
+        <table class="kd-table">
+          <thead><tr>
+            <th>${esc(T('邮箱 / Email'))}</th>
+            <th>${esc(T('姓名 / Name'))}</th>
+            <th>${esc(T('成员状态 / Membership'))}</th>
+            <th>${esc(T('账号 / Account'))}</th>
+            <th>${esc(T('最近登录 / Last sign-in'))}</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${users.users.length ? users.users.map((u) => `
+            <tr>
+              <td class="kd-mono">${esc(u.email)}</td>
+              <td>${esc(u.display_name || '—')}</td>
+              <td>${statusBadge(u.status)}</td>
+              <td>${u.account_deleted ? badge('danger', esc(T('已关闭 / closed')))
+                : u.disabled ? badge('warn', esc(T('已停用 / disabled')))
+                : esc(label(u.account_role))}</td>
+              <td>${esc(when(u.last_login_at))}</td>
+              <td style="text-align:right">
+                ${u.status === 'active' && !u.account_deleted
+                  ? `<button class="kd-btn sm" data-dis="${u.id}" ${state.readOnly ? 'disabled' : ''}>${esc(T('移出 / Remove'))}</button>`
+                  : ''}
+              </td>
+            </tr>`).join('') : emptyRow(6, '还没有个人用户 / No personal users yet')}</tbody>
+        </table>
+      </div>
+    </div>`;
+
+  document.getElementById('bl-save').addEventListener('click', async () => {
+    const text = document.getElementById('bl-text').value;
+    try {
+      const d = await api('/personal/blocked-domains', {
+        method: 'PUT',
+        body: { domains: text.split('\n').map((s) => s.trim()).filter(Boolean) },
+      });
+      state.cache.overview = null;
+      kldNotify(T('已生效 / In force: ') + d.domains.join(', '), 'ok');
+      await render();
+    } catch (err) { kldFail(err); }
+  });
+
+  document.getElementById('bl-probe-go').addEventListener('click', async () => {
+    const d = document.getElementById('bl-probe').value.trim();
+    if (!d) return;
+    const out = document.getElementById('bl-probe-out');
+    try {
+      const r = await api('/personal/domains/' + encodeURIComponent(d) + '/check', { method: 'POST' });
+      out.textContent = T(r.reason) + (r.would_match_org
+        ? ` (${T('会归入企业 / matches organization')}: ${r.would_match_org})` : '');
+    } catch (err) { out.textContent = err.message || String(err); }
+  });
+
+  host.querySelectorAll('[data-dis]').forEach((b) => b.addEventListener('click', async () => {
+    const ok = await kldConfirm(T('把这个个人用户移出 / Remove this personal user'),
+      esc(T('只移除成员身份，账号和文档都保留。这不是关闭账号。 / This removes the membership only. The account and its documents stay — this is not an account closure.')),
+      T('移出 / Remove'), true);
+    if (!ok) return;
+    try {
+      await api('/personal/' + b.dataset.dis + '/disable', { method: 'POST', body: {} });
+      kldNotify(T('已移出 / Removed'), 'ok');
+      await render();
+    } catch (err) { kldFail(err); }
+  }));
+}
+
+/* ═══ 4. accounts + agent codes ══════════════════════════════════════════════ */
+
+async function renderAccounts(host) {
+  const [users, codes] = await Promise.all([api('/accounts?limit=500'), api('/agent-codes')]);
+  /* ⚠️ A code belongs to the person it acts as, so it lives in their row. It used to be a
+   * second table further down the page, which made the two things you most often need
+   * together — "who is this" and "what can they hand to their assistant" — require matching
+   * an email in one table against a 所属账号 cell in another, with nothing on the row tying
+   * them together. A closed account also had a perfectly healthy-looking code beside it in
+   * the other table; that pairing is now impossible to misread. */
+  const byUser = new Map();
+  for (const t of codes.tokens) {
+    if (!byUser.has(t.user_id)) byUser.set(t.user_id, []);
+    byUser.get(t.user_id).push(t);
+  }
+  host.innerHTML = `
+    <div class="kd-card">
+      <div class="kd-card-hd">
+        <h2>${esc(T('账号 / Accounts'))}</h2><span class="kd-sub">${users.users.length}</span>
+        <span class="kd-grow"></span>
+        <input class="kd-input" id="ac-q" style="width:264px" data-i18n-skip
+               placeholder="${esc(T('搜索邮箱 / search'))}">
+        <button class="kd-btn sm" id="ac-q-go">${esc(T('搜索 / Search'))}</button>
+      </div>
+      <div class="kd-card-bd tight">
+        <table class="kd-table">
+          <thead><tr>
+            <th>${esc(T('邮箱 / Email'))}</th>
+            <th>${esc(T('姓名 / Name'))}</th>
+            <th>${esc(T('角色 / Role'))}</th>
+            <th>${esc(T('状态 / State'))}</th>
+            <th>${esc(T('Agent 授权码 / Agent code'))}</th>
+            <th>${esc(T('剩余保留 / Days left'))}</th>
+            <th>${esc(T('最近登录 / Last sign-in'))}</th>
+            <th style="text-align:right">${esc(T('操作 / Actions'))}</th>
+          </tr></thead>
+          <tbody>${users.users.length
+            ? users.users.map((u) => accountRow(u, byUser.get(u.id) || [])).join('')
+            : emptyRow(8, '—')}</tbody>
+        </table>
+      </div>
+      <div class="kd-card-ft">
+        ${esc(T('授权码是给 agent 用的凭据：装上 Agent Skill 的助手用它调用接口，不用再单独登录；注册时自动签发，这里只显示掩码，点图标复制完整码 / A code is the agent credential: an assistant with the Agent Skill uses it to call the API without signing in. One is issued at registration; the row shows a masked value and the icon copies the full code'))}
+      </div>
+    </div>`;
+
+  const search = async () => {
+    const q = document.getElementById('ac-q').value.trim();
+    try {
+      state.cache.accounts = await api('/accounts?limit=500' + (q ? '&q=' + encodeURIComponent(q) : ''));
+      await render();
+    } catch (err) { kldFail(err); }
+  };
+  document.getElementById('ac-q-go').addEventListener('click', search);
+  document.getElementById('ac-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
+
+  host.querySelectorAll('[data-revoke-code]').forEach((b) => b.addEventListener('click', async () => {
+    if (!await kldConfirm(T('吊销这枚授权码？ / Revoke this code?'),
+      esc(T('吊销后它立刻不能再用；已经拿到码的人会收到 401。 / It stops working immediately; whoever holds it gets a 401.')),
+      T('吊销 / Revoke'), true)) return;
+    try {
+      await api('/agent-codes/' + b.dataset.revokeCode, { method: 'DELETE' });
+      kldNotify(T('已吊销 / Revoked'), 'ok'); await render();
+    } catch (err) { kldFail(err); }
+  }));
+  host.querySelectorAll('[data-purge-code]').forEach((b) => b.addEventListener('click', async () => {
+    if (!await kldConfirm(T('删除这枚授权码？ / Delete this code?'),
+      esc(T('永久删除，不可恢复。 / Permanent, and not recoverable.')), T('删除 / Delete'), true)) return;
+    try {
+      await api('/agent-codes/' + b.dataset.purgeCode + '/purge', { method: 'DELETE' });
+      kldNotify(T('已删除 / Deleted'), 'ok'); await render();
+    } catch (err) { kldFail(err); }
+  }));
+  host.querySelectorAll('[data-copy-code]').forEach((b) => b.addEventListener('click', async () => {
+    const ok = await copyToClipboard(b.dataset.code);
+    if (ok) kldNotify(T('授权码已复制 / Code copied'), 'ok');
+    /* ⚠️ Say so when the copy failed. A silent no-op here is indistinguishable from a
+     * broken button, and the person clicking it is usually mid-task with an assistant
+     * waiting on the other end. */
+    else kldNotify(T('复制失败，请手动选中 / Copy failed — select it manually'), 'err');
+  }));
+  host.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () =>
+    accountAction(b.dataset.act, Number(b.dataset.id), b.dataset.email)));
+}
+
+/* One account's codes, inside their row.
+ *
+ * ⚠️ A revoked code stays listed rather than disappearing. Removing it on revoke would
+ * make "this person has no agent access" and "this person had one, I killed it" render
+ * identically, and the second is exactly the state an operator needs to notice when
+ * somebody reports their assistant stopped working.
+ */
+function agentCodeCell(u, tokens) {
+  if (!tokens.length) {
+    /* ⚠️ No action here on purpose. This used to offer 「签发」, and it was wrong twice
+     * over: a code is not something an operator should have to remember to request, and
+     * the button was the only thing standing between a viewer and "this person has no
+     * agent access" being a permanent state. Registration mints a code, the first-admin
+     * bootstrap mints one, and `backfill_missing_agent_codes` repairs anything else on
+     * the next start — so reaching this state means the invariant is broken, and the
+     * honest rendering is to say so rather than to offer a button that hides it.
+     * A closed account is a different case and is simply "none": a code issued to it
+     * would resolve to nothing (`resolve_agent_token` checks the owner). */
+    if (u.deleted_at || u.disabled) {
+      return `<span class="kd-muted">${esc(T('无 / none'))}</span>`;
+    }
+    return `<span class="kd-muted" title="${esc(T('尚未签发 / not issued yet'))}">${esc(T('待签发 / pending'))}</span>`;
+  }
+  return tokens.map((t) => {
+    const dead = !!t.revoked_at;
+    /* `code` is null for a code issued before `code_enc` existed, or after SECRET_KEY was
+     * rotated — `display` is all that survives. Showing a copy button there would copy a
+     * prefix that cannot authenticate, so the button is omitted and the prefix is shown
+     * as-is, which is the truth about what is recoverable. */
+    const body = t.code
+      ? `<span class="kd-mono">${esc(maskAgentCode(t.code))}</span>
+         <button class="kd-iconbtn" data-copy-code="${t.id}" data-code="${esc(t.code)}"
+                 title="${esc(T('复制完整授权码 / copy the full code'))}"
+                 aria-label="${esc(T('复制完整授权码 / copy the full code'))}">${COPY_ICON}</button>`
+      : `<span class="kd-mono" title="${esc(T('完整码已不可恢复，只剩前缀 / only the prefix survives'))}">${esc(t.display || '')}</span>`;
+    return `<div class="kd-code">
+      <span class="kd-code-mark ${dead ? 'dead' : ''}">${dead
+        ? badge('danger', esc(T('已吊销 / revoked'))) : badge('ok', esc(T('生效 / live')))}</span>
+      ${body}
+      <button class="kd-btn sm ${dead ? '' : 'danger'}"
+              data-${dead ? 'purge' : 'revoke'}-code="${t.id}"
+              ${state.readOnly ? 'disabled' : ''}>${esc(dead ? T('删除 / Delete') : T('吊销 / Revoke'))}</button>
+    </div>`;
+  }).join('');
+}
+
+function accountRow(u, tokens) {
+  const state_ = u.deleted_at
+    ? badge('danger', esc(T('已关闭 / closed')))
+    : u.disabled ? badge('warn', esc(T('已停用 / disabled')))
+    : badge('ok', esc(T('正常 / active')));
+  return `<tr>
+    <td class="kd-mono">${esc(u.email)}</td>
+    <td>${esc(u.display_name || '—')}</td>
+    <td>${u.role === 'admin' ? badge('info', esc(T('超管 / operator'))) : esc(label(u.role))}</td>
+    <td>${state_}</td>
+    <td class="kd-code-cell">${agentCodeCell(u, tokens || [])}</td>
+    <td>${u.days_left == null ? '—' : u.days_left + ' ' + esc(T('天 / days'))}</td>
+    <td>${esc(when(u.last_login_at))}</td>
+    <td style="text-align:right;white-space:nowrap">
+      ${u.deleted_at
+        ? `<button class="kd-btn sm" data-act="restore" data-id="${u.id}" data-email="${esc(u.email)}" ${state.readOnly ? 'disabled' : ''}>${esc(T('恢复 / Restore'))}</button>
+           <button class="kd-btn sm danger" data-act="purge" data-id="${u.id}" data-email="${esc(u.email)}" ${state.readOnly ? 'disabled' : ''}>${esc(T('彻底清除 / Erase'))}</button>`
+        : `<button class="kd-btn sm" data-act="impact" data-id="${u.id}" data-email="${esc(u.email)}">${esc(T('影响 / Impact'))}</button>
+           <button class="kd-btn sm danger" data-act="close" data-id="${u.id}" data-email="${esc(u.email)}" ${state.readOnly ? 'disabled' : ''}>${esc(T('关闭 / Close'))}</button>`}
+    </td>
+  </tr>`;
+}
+
+async function accountAction(act, id, email) {
+  if (act === 'impact') {
+    try {
+      const d = await api(`/accounts/${id}/impact`);
+      const scrim = document.createElement('div');
+      scrim.className = 'kd-scrim';
+      const drawer = document.createElement('div');
+      drawer.className = 'kd-drawer';
+      const line = (k, v) => `<div style="display:flex;gap:8px;padding:3px 0">
+        <span style="min-width:150px;color:var(--text-3)">${esc(T(k))}</span><strong>${esc(v)}</strong></div>`;
+      drawer.innerHTML = `
+        <div class="kd-drawer-hd"><h2>${esc(T('关闭这个账号会影响什么 / What closing this account affects'))}</h2>
+          <button class="kd-btn sm ghost" data-x>✕</button></div>
+        <div class="kd-drawer-bd">
+          <div class="kd-mono">${esc(email)}</div>
+          ${line('owned reports / 名下报告', d.owned_reports || 0)}
+          ${line('public reports / 公开报告', (d.public_reports || []).length)}
+          ${line('owned dashboards / 名下仪表盘', (d.own_dashboards || []).length)}
+          ${line('datasets / 数据集', (d.datasets || []).length)}
+          ${line('files / 文件', d.files || 0)}
+          ${line('dependents / 依赖方', (d.dependents || []).length)}
+          <div class="kd-note">${esc(T('关闭只是把账号放进 30 天回收站，数据一行都不删；到期后才会被清除。 / Closing only moves the account into a 30-day bin. Nothing is deleted until the deadline passes.'))}</div>
+        </div>
+        <div class="kd-drawer-ft"><button class="kd-btn primary" data-x>${esc(T('知道了 / Got it'))}</button></div>`;
+      document.body.appendChild(scrim); document.body.appendChild(drawer);
+      const close = () => { scrim.remove(); drawer.remove(); };
+      scrim.addEventListener('click', close);
+      drawer.querySelectorAll('[data-x]').forEach((b) => b.addEventListener('click', close));
+    } catch (err) { kldFail(err); }
+    return;
+  }
+
+  const confirmations = {
+    close: {
+      title: T('关闭账号 / Close the account'),
+      body: T('账号会进入 30 天回收站，可以恢复；数据不会立刻删除。 / The account goes into a 30-day bin and can be restored. Nothing is deleted yet.'),
+      ok: T('关闭 / Close'), danger: true, askEmail: true,
+      call: (v) => api(`/accounts/${id}?confirm=${encodeURIComponent(v)}`, { method: 'DELETE' }),
+    },
+    purge: {
+      title: T('彻底清除 / Erase for good'),
+      body: T('不可恢复：报告、仪表盘、数据集、文件和所有旁挂记录都会被删除。 / Irreversible: reports, dashboards, datasets, files and every sidecar are deleted.'),
+      ok: T('永久删除 / Erase'), danger: true, askEmail: true,
+      call: (v) => api(`/accounts/${id}/purge?confirm=${encodeURIComponent(v)}`, { method: 'DELETE' }),
+    },
+    restore: {
+      title: T('恢复账号 / Restore the account'),
+      body: T('账号与内容原样回来，行 id 不变；管理员单独停用的状态不会被恢复。 / The account and its content come back with the same row ids. A separate administrator disable is left alone.'),
+      ok: T('恢复 / Restore'), danger: false, askEmail: false,
+      call: () => api(`/accounts/${id}/restore`, { method: 'POST' }),
+    },
+  }[act];
+  if (!confirmation) return;
+
+  const v = await kldPrompt(confirmations.title, esc(confirmations.body), confirmations.ok,
+    confirmations.askEmail ? email : '');
+  if (v === null) return;
+  if (confirmations.askEmail && v.trim().toLowerCase() !== email.trim().toLowerCase()) {
+    return kldNotify(T('邮箱不一致，已取消 / The address did not match; nothing was done'), 'err');
+  }
+  try {
+    const r = await confirmations.call(v);
+    if (r && r.report) {
+      const total = Object.values(r.report).reduce((a, b) => a + (Number(b) || 0), 0);
+      kldNotify(T('已清除 / Erased') + '：' + total, 'ok');
+    } else {
+      kldNotify(T('已完成 / Done'), 'ok');
+    }
+    state.cache.overview = null;
+    await render();
+  } catch (err) { kldFail(err); }
+}
+
+/* ═══ 5. modules ═════════════════════════════════════════════════════════════ */
+
+async function renderModules(host) {
+  const d = state.cache.modules || (state.cache.modules = await api('/modules'));
+  const on = new Set(d.deployment_default);
+  const src = { table: T('来自管理后台（已保存）'), env: 'KLADO_MODULES',
+                registry: T('未设置，全部开启') }[d.source] || d.source;
+
+  host.innerHTML = `
+    <div class="kd-card">
+      <div class="kd-card-hd">
+        <h2>${esc(T('部署级默认模块 / Deployment default modules'))}</h2>
+        <span class="kd-badge ${d.source === 'table' ? 'info' : ''}">${esc(src)}</span>
+        <span class="kd-grow"></span>
+        <button class="kd-btn sm primary" id="mod-save" ${state.readOnly ? 'disabled' : ''}>${esc(T('保存 / Save'))}</button>
+      </div>
+      <div class="kd-card-bd">
+        <div class="kd-note info">${esc(T(
+          '账号的模块权限 = 这个默认值 ∩ 账号自己的开关，只能被收窄，不能被放宽。 / An account gets this default narrowed by its own switches — it can only ever be less, never more.'
+        ))}</div>
+        <div class="kd-matrix" style="margin-top:12px">
+          ${d.modules.map((m) => `
+            <div class="kd-mod">
+              <div class="kd-grow">
+                <div class="kd-title">${esc(kladoI18n.currentLang() === 'en' ? m.label_en : m.label_zh)}</div>
+                <div class="kd-meta">${esc(m.key)}${m.required ? ' · ' + esc(T('必需 / required')) : ''}</div>
+              </div>
+              <button class="kd-switch" role="switch" data-mod="${m.key}"
+                      aria-checked="${on.has(m.key)}" ${m.required || state.readOnly ? 'disabled' : ''}></button>
+            </div>`).join('')}
+        </div>
+        ${d.source === 'env' ? `<div class="kd-note" style="margin-top:12px">${esc(T(
+          '当前值来自 .env 的 KLADO_MODULES。在管理后台保存一次之后，表里的值优先，.env 只作为初始值。 / Right now this comes from KLADO_MODULES in .env. Saving here once makes the table authoritative, and the variable is only the seed.'
+        ))}</div>` : ''}
+        ${d.env_hint ? `<div class="kd-mono" style="margin-top:8px;color:var(--text-3)">KLADO_MODULES=${esc(d.env_hint)}</div>` : ''}
+      </div>
+    </div>`;
+
+  const boxes = {};
+  host.querySelectorAll('[data-mod]').forEach((b) => {
+    boxes[b.dataset.mod] = b;
+    b.addEventListener('click', () => {
+      const next = b.getAttribute('aria-checked') !== 'true';
+      b.setAttribute('aria-checked', String(next));
+    });
+  });
+  document.getElementById('mod-save').addEventListener('click', async () => {
+    const keys = Object.keys(boxes).filter((k) => boxes[k].getAttribute('aria-checked') === 'true');
+    try {
+      const r = await api('/modules', { method: 'PUT', body: { keys } });
+      state.cache.modules = null; state.cache.overview = null;
+      kldNotify(T('已保存 / Saved') + '：' + r.deployment_default.join(', '), 'ok');
+      await render();
+    } catch (err) { kldFail(err); }
+  });
+}
+
+/* ═══ 6. project manual (the agent's instruction set) ═══════════════════════ */
+
+/* View state lives here rather than in `state.cache`: the list is cheap to refetch, and
+ * caching it would mean a filter or search change reads a stale corpus. `key` is the
+ * selected `document_id`, and `detail` is the one fetched body. */
+const kbView = { type: '', search: '', key: null, detail: null };
+
+function kkBytes(n) {
+  if (n == null) return '—';
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1048576).toFixed(1) + ' MB';
+}
+
+function kkPairNote(doc) {
+  if (!doc || !doc.source_path) return '';
+  /* The manual is Chinese-only since 2026-10-03, so there is no longer a pair to
+   * explain. What remains worth saying is where a deployable document comes from: the
+   * file is the single writer, and the page is a window onto it. */
+  return `<div class="kk-note">${esc(T('源文件 / source file'))} <code>${esc(doc.source_path)}</code>${esc(
+    ' · ')}${esc(T(
+      '说明书统一为中文，由这些文件随部署写入 / the manual is Chinese-only and is written from these files on deploy'))}</div>`;
+}
+
+async function kkOpen(key, host) {
+  kbView.key = key;
+  kbView.detail = null;
+  try {
+    kbView.detail = await api('/manual/' + encodeURIComponent(key));
+  } catch (err) {
+    kldFail(err);
+    kbView.detail = null;
+  }
+  /* ⚠️ 只换右栏 + 改选中态，**不整页重绘**。
+   *
+   * 这一行原本是 `await renderManual(host)`，而 renderManual 做的事是
+   * `host.innerHTML = …` —— 把 `.kk-list` 和 `.kk-main` 整个换掉。两个后果：
+   * ① 它们的 `scrollTop` 归零，所以「在目录里往下滚、点一篇、目录弹回顶部」；
+   * ② 选中项自己也可能被推出可视区，于是点完看不见自己点的是哪一篇。
+   * 实测（2026-10-03）：左列表 scrollTop 400 → 0，右正文 600 → 0。
+   *
+   * 整页重绘本来也没有必要：筛选条、统计卡、chip 都不随选中项变，而正文里的
+   * 每一行都带着 `data-i18n-skip`（那是文档内容），语言切换也不该动它。 */
+  const main = host.querySelector('.kk-main');
+  if (main) main.innerHTML = kkDetailPane();
+  host.querySelectorAll('.kk-item').forEach((b) =>
+    b.classList.toggle('on', b.dataset.key === key));
+}
+
+function kkDetailPane() {
+  const d = kbView.detail;
+  if (!d) {
+    return `<div class="kk-empty"><div class="kk-empty-t">${esc(T(
+      '未选择文档 / Nothing selected'))}</div><div class="kk-empty-s">${esc(T(
+      '在左侧选择一篇说明书查看全文。这些就是 agent 运行时能读到并遵循的规则；修改请编辑 knowledge_docs 目录下的文件并重新部署。 / Pick a document on the left. These are the rules an agent reads and follows at runtime; to change one, edit its file in the knowledge_docs folder and deploy.'))}</div></div>`;
+  }
+  const truncated = d.truncated
+    ? `<div class="kd-note warn">${esc(T(
+        '内容过长，已截断显示 / Content truncated for display'))}</div>` : '';
+  const sha = d.content_sha256
+    ? `<div class="kk-doc-meta"><span title="${esc(d.content_sha256)}">${esc(T(
+        '内容哈希 / content hash'))} <code>${esc(String(d.content_sha256).slice(0, 12))}…</code></span></div>`
+    : '';
+  return `<article class="kk-doc">
+    <header class="kk-doc-head">
+      <h2 class="kk-doc-title" data-i18n-skip>${esc(d.title)}</h2>
+      <div class="kk-doc-meta">
+        <code>${esc(d.document_id)}</code> ·
+        ${esc(T('类型 / type'))} ${esc(d.document_type)} ·
+        ${esc(T('版本 / version'))} ${esc(d.version)} ·
+        ${esc(kkBytes(d.content_chars))} ·
+        ${esc(T('更新 / updated'))} ${esc(when(d.updated_at))}
+      </div>
+      <div class="kk-doc-meta">
+        ${d.runtime_contract ? badge('info', T('运行时契约 / runtime contract') + ' ' + d.runtime_contract) : ''}
+        ${d.retrieval_role ? badge('warn', T('检索角色 / retrieval role') + ' ' + d.retrieval_role) : ''}
+      </div>
+      ${sha}
+    </header>
+    ${kkPairNote(d)}
+    ${kkTagRow(d.tags)}
+    ${truncated}
+    <div class="kk-render" data-i18n-skip>${kkMarkdown(d.content)}</div>
+  </article>`;
+}
+
+async function renderManual(host) {
+  const q = new URLSearchParams();
+  if (kbView.type) q.set('type', kbView.type);
+  if (kbView.search) q.set('search', kbView.search);
+  const d = await api('/manual?' + q.toString());
+  /* The title bar carries 正文总量 (see `pageMeta`), so the summary has to survive a
+   * re-render of this page — it arrives with the list, not from a second request. */
+  state.cache.manual = d;
+  setPageMeta(PAGES.find((p) => p.key === 'manual'));
+  const s = d.summary.totals;
+
+  const rows = d.documents.map((x) => `
+    <button class="kk-item${kbView.key === x.document_id ? ' on' : ''}" data-key="${esc(x.document_id)}">
+      <span class="kk-item-hd">
+        <span class="kk-item-t" data-i18n-skip>${esc(x.title)}</span>
+        ${x.retrieval_role ? badge('warn', x.retrieval_role) : ''}
+      </span>
+      <span class="kk-item-s" data-i18n-skip><code>${esc(x.document_id)}</code></span>
+      <span class="kk-item-m" data-i18n-skip>${esc(x.document_type)} · ${esc(T('版本'))} ${esc(x.version)} · ${esc(kkBytes(x.content_chars))}</span>
+    </button>`);
+
+  const typeChips = [{ key: '', label: T('全部 / All'), n: s.total }]
+    .concat(d.summary.by_type.map((t) => ({ key: t.document_type, label: t.document_type, n: t.documents })));
+  host.innerHTML = `
+    <div class="kk-bar">
+      <div class="kk-bar-hd">
+        <div class="kk-scope">
+          ${typeChips.map((c) => `<button class="kk-chip${kbView.type === c.key ? ' on' : ''}"
+            data-type="${esc(c.key)}">${esc(c.label)} <span class="kk-n">${esc(c.n)}</span></button>`).join('')}
+        </div>
+        <span class="kd-grow"></span>
+        <input class="kd-input kk-search" id="kk-search" type="search" data-i18n-skip
+               value="${esc(kbView.search)}"
+               placeholder="${esc(T('搜索标题、标签、源文件 / Search title, tag, source file'))}">
+      </div>
+      <div class="kk-split">
+        <aside class="kk-list" id="kk-list">
+          ${rows.length ? rows.join('')
+            : `<div class="kd-empty">${esc(T('没有匹配的文档 / Nothing matches'))}</div>`}
+        </aside>
+        <section class="kk-main">${kkDetailPane()}</section>
+      </div>
+    </div>`;
+
+  host.querySelectorAll('[data-type]').forEach((b) => b.addEventListener('click', async () => {
+    kbView.type = b.dataset.type; kbView.key = null; kbView.detail = null;
+    await renderManual(host);
+  }));
+  host.querySelectorAll('[data-key]').forEach((b) => b.addEventListener('click', () =>
+    kkOpen(b.dataset.key, host)));
+
+  const search = host.querySelector('#kk-search');
+  if (search) {
+    /* Debounced: every keystroke would otherwise be a round trip that re-renders the
+     * whole pane, including the input the user is typing into. */
+    let timer = null;
+    search.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        kbView.search = search.value; kbView.key = null; kbView.detail = null;
+        await renderManual(host);
+        const again = host.querySelector('#kk-search');
+        if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+      }, 300);
+    });
+  }
+}
+
+/* ═══ 6b. agent skill ═════════════════════════════════════════════════════════ */
+
+/** The Agent Skill page's own state. Separate from `kbView` on purpose: the two pages
+ *  list different things with different ids, and one shared object would mean a document
+ *  selected on 项目说明书 could leak into this page's "currently open" row. */
+const skView = { search: '', key: null, detail: null };
+
+function skDetailPane() {
+  const d = skView.detail;
+  if (!d) {
+    return `<div class="kk-empty"><div class="kk-empty-t">${esc(T(
+      '未选择文件 / Nothing selected'))}</div><div class="kk-empty-s">${esc(T(
+      '在左侧选一个文件查看全文。这就是交给外部 agent 的那份技能包——agent 装上它之后，才会按这里的规则工作。修改请编辑 agent_skill 目录并重新构建。 / Pick a file on the left. This is the package handed to an outside agent — it works to these rules once installed. To change one, edit its file under agent_skill and rebuild.'))}</div></div>`;
+  }
+  const head = `<header class="kk-doc-head">
+    <h2 class="kk-doc-title" data-i18n-skip>${esc(d.label)}</h2>
+    <div class="kk-doc-meta">
+      <code data-i18n-skip>${esc(d.path)}</code> ·
+      ${esc(T('类型 / type'))} ${esc(d.kind)} ·
+      ${esc(kkBytes(d.bytes))}${d.package_version ? ' · ' + esc(T('包版本 / package version')) +
+        ' <code>' + esc(d.package_version) + '</code>' : ''}
+    </div>
+  </header>`;
+  const fm = d.front_matter && d.front_matter.name
+    ? `<div class="kk-note">${esc(T('技能名 / skill name'))} <code>${esc(d.front_matter.name)}</code>`
+      + (d.front_matter.description
+         ? `<br>${esc(T('描述（决定 agent 何时加载它） / description (decides when the agent loads it)'))}`
+           + ` <code class="kk-fm-desc">${esc(d.front_matter.description)}</code>`
+         : '')
+      + '</div>'
+    : '';
+  const truncated = d.truncated
+    ? `<div class="kd-note warn">${esc(T(
+        '内容过长，已截断显示 / Content truncated for display'))}</div>` : '';
+  /* Markdown goes through the same renderer the manual uses. Everything else is shown
+   * as source inside a <pre> — the four dashboard references are working HTML pages, and
+   * rendering them as if they were prose would show the operator a document that is not
+   * the thing. Both paths escape before anything is interpreted: the renderer escapes at
+   * emit time, and this one is a single `esc()`. */
+  const body = d.kind === 'markdown'
+    ? `<div class="kk-render" data-i18n-skip>${kkMarkdown(d.content)}</div>`
+    : `<pre class="kk-src" data-i18n-skip>${esc(d.content)}</pre>`;
+  return `<article class="kk-doc">${head}${fm}${truncated}${body}</article>`;
+}
+
+async function skOpen(key, host) {
+  skView.key = key;
+  skView.detail = null;
+  try {
+    skView.detail = await api('/agent-skill/' + encodeURIComponent(key));
+  } catch (err) {
+    kldFail(err);
+    skView.detail = null;
+  }
+  /* Only the right pane is replaced — see `kkOpen` for why a full re-render here would
+   * throw away the reader's place in the file list. */
+  const main = host.querySelector('.kk-main');
+  if (main) main.innerHTML = skDetailPane();
+  host.querySelectorAll('.sk-item').forEach((b) =>
+    b.classList.toggle('on', b.dataset.entry === key));
+}
+
+async function renderSkill(host) {
+  const q = new URLSearchParams();
+  if (skView.search) q.set('search', skView.search);
+  const d = await api('/agent-skill?' + q.toString());
+  state.cache.skill = d;
+  setPageMeta(PAGES.find((p) => p.key === 'skill'));
+  const s = d.summary;
+
+  /* A package that was never built is a state, not an error: the backend answers 200
+   * with `built: false` precisely so this branch can say what happened instead of the
+   * page's generic "加载失败" card. */
+  if (!s.built) {
+    host.innerHTML = `<div class="kd-card"><div class="kd-card-bd">
+      <div class="kd-note warn">${esc(T('技能包尚未构建 / the agent skill package has not been built'))}</div>
+      <div class="kd-help" style="margin-top:8px"><code>${esc(s.reason || '')}</code></div>
+      <div class="kd-help" style="margin-top:8px">${esc(T(
+        '在仓库里运行下面这个脚本重新生成技能包，部署后本页就能读到它。 / Run this script in the repository to rebuild the package; the page reads it once deployed.'))}
+        <br><code>bash scripts/build_agent_skill.sh</code></div>
+    </div></div>`;
+    return;
+  }
+
+  const rows = d.entries.map((x) => `
+    <button class="kk-item sk-item${skView.key === x.path ? ' on' : ''}" data-entry="${esc(x.path)}">
+      <span class="kk-item-hd">
+        <span class="kk-item-t" data-i18n-skip>${esc(x.label)}</span>
+        ${x.kind === 'markdown' ? badge('ok', T('正文 / prose')) : ''}
+      </span>
+      <span class="kk-item-s" data-i18n-skip><code>${esc(x.path)}</code></span>
+      <span class="kk-item-m" data-i18n-skip>${esc(kkBytes(x.bytes))}</span>
+    </button>`);
+
+  host.innerHTML = `
+    <div class="kk-bar">
+      <div class="kk-bar-hd">
+        <div class="kk-scope">
+          <span class="kk-chip on" data-i18n-skip>${esc(s.name || 'agent skill')}
+            <span class="kk-n">${esc(s.package_version || T('未标记版本 / no stamp'))}</span></span>
+          <span class="kk-chip">${esc(T('文件 / files'))}
+            <span class="kk-n">${esc(s.entries)}</span></span>
+        </div>
+        <span class="kd-grow"></span>
+        <input class="kd-input kk-search" id="sk-search" type="search" data-i18n-skip
+               value="${esc(skView.search)}"
+               placeholder="${esc(T('搜索文件名 / Search file name'))}">
+      </div>
+      <div class="kk-split">
+        <aside class="kk-list" id="sk-list">
+          ${rows.length ? rows.join('')
+            : `<div class="kd-empty">${esc(T('没有匹配的文件 / Nothing matches'))}</div>`}
+        </aside>
+        <section class="kk-main">${skDetailPane()}</section>
+      </div>
+    </div>`;
+
+  host.querySelectorAll('[data-entry]').forEach((b) => b.addEventListener('click', () =>
+    skOpen(b.dataset.entry, host)));
+
+  const search = host.querySelector('#sk-search');
+  if (search) {
+    let timer = null;
+    search.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        skView.search = search.value; skView.key = null; skView.detail = null;
+        await renderSkill(host);
+        const again = host.querySelector('#sk-search');
+        if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+      }, 300);
+    });
+  }
+}
+
+/* ── markdown ────────────────────────────────────────────────────────────────
+ *
+ * The console has no `marked`. The main app carries its own copy inline in its
+ * `index.html`, and vendoring a second one into a second program is how two renderers
+ * start disagreeing about what a page says. So this is a deliberately small subset —
+ * headings, tables, lists, quotes, rules, code, and the inline marks — which is what
+ * knowledge bodies actually use. A construct it does not know is shown as its own text,
+ * never silently dropped.
+ *
+ * ⚠️ THE ORDER IS THE SAFETY PROPERTY, not a style preference. The source is HTML-escaped
+ * FIRST, and every rule below may only *add* tags of its own. Nothing in the input can
+ * therefore introduce an attribute or a tag: an `onerror=` in a page body arrives as
+ * text. That also disposes of the `&#x6a;avascript:` trick for free — the ampersand is
+ * escaped to `&amp;` before any link rule reads a URL, so the browser is handed literal
+ * text rather than a scheme. A link's scheme is allowlisted *as well*, because escaping
+ * alone is a claim about this file and the allowlist is a claim about the user's browser.
+ */
+const KK_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const kkEscape = (s) => String(s).replace(/[&<>"']/g, (c) => KK_ESCAPES[c]);
+
+function kkInline(text) {
+  /* U+0000 sentinels, written as escapes rather than as raw control bytes. Two reasons,
+   * and the first is the one that bites:
+   *
+   *  1. a space-delimited placeholder would collide with the literal text " 0 " — and a
+   *     knowledge page is free to contain "2026 10 03". A digit run between two spaces
+   *     is not a rare thing to find in a document body;
+   *  2. a raw NUL in a source file is invisible. It survives only as long as nothing
+   *     rewrites the file, and the day something does — an editor that trims control
+   *     characters, a formatter, a copy through a terminal — the restore regex below
+   *     silently becomes a no-op and the page renders a stray U+0000 placeholder as text. The
+   *     escapes say what they are to the next reader and to grep.
+   */
+  const spans = [];
+  const stash = (html) => '\u0000' + (spans.push(html) - 1) + '\u0000';
+
+  let s = text;
+  /* Code spans first — nothing inside one is markup, not even an asterisk. */
+  s = s.replace(/`([^`\n]+)`/g, (_, code) => stash('<code>' + code + '</code>'));
+  /* Links, with a scheme allowlist. `javascript:` has a scheme and is not on the list, so
+   * it is returned as literal text instead of an anchor. */
+  s = s.replace(/\[([^\]\n]*)\]\(([^)\s]*)\)/g, (m, label, href) => {
+    const relative = !/^[a-z][a-z0-9+.-]*:/i.test(href);
+    if (!relative && !/^(https?|mailto):/i.test(href)) return m;
+    const external = !relative;
+    return '<a href="' + href + '"' +
+      (external ? ' target="_blank" rel="noopener noreferrer"' : '') + '>' +
+      (label || href) + '</a>';
+  });
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+       .replace(/__([^_\n]+)__/g, '<strong>$1</strong>')
+       .replace(/(^|[^*\w])\*([^*\n]+)\*(?![*\w])/g, '$1<em>$2</em>')
+       .replace(/(^|[^_\w])_([^_\n]+)_(?![_\w])/g, '$1<em>$2</em>')
+       .replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
+
+  /* Resolved repeatedly, not once: a code span may sit inside a link label, so resolving
+   * the link can expose a placeholder that was hidden behind it. */
+  for (let i = 0; i < 8 && s.indexOf('\u0000') !== -1; i++) {
+    s = s.replace(/\u0000(\d+)\u0000/g, (_, n) => spans[Number(n)]);
+  }
+  return s;
+}
+
+function kkMarkdown(src) {
+  if (src == null) return '';
+  let s = kkEscape(src).replace(/\r\n?/g, '\n');
+
+  /* Fenced code is lifted out before anything else can touch it. Unterminated fences are
+   * handled by the `|$` alternative, so a truncated body still renders as code instead of
+   * dumping the rest of the page into a paragraph. */
+  const fences = [];
+  s = s.replace(/```([^\n`]*)\n([\s\S]*?)(?:```|$)/g, (_, lang, code) => {
+    const cls = lang.trim() ? ' class="language-' + kkEscape(lang.trim()) + '"' : '';
+    return '\u0001' + (fences.push('<pre><code' + cls + '>' +
+      code.replace(/\n$/, '') + '</code></pre>') - 1) + '\u0001';
+  });
+
+  const isTableSep = (line) => /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(line) && line.includes('-');
+  const splitRow = (line) => line.replace(/^\s*\|/, '').replace(/\|\s*$/, '')
+    .split('|').map((cell) => cell.trim());
+  const bullet = (line) => /^\s*[-*+]\s+/.test(line);
+  const numbered = (line) => /^\s*\d+[.)]\s+/.test(line);
+
+  const out = [];
+  const lines = s.split('\n');
+  let para = [];
+  const flush = () => {
+    if (para.length) { out.push('<p>' + kkInline(para.join('\n')) + '</p>'); para = []; }
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim()) { flush(); continue; }
+
+    const fence = line.match(/^\u0001(\d+)\u0001$/);
+    if (fence) { flush(); out.push(fences[Number(fence[1])] || ''); continue; }
+
+    const heading = line.match(/^(#{1,6})\s+(.*)$/);
+    if (heading) {
+      flush();
+      /* Knowledge bodies use `#` for the title and the page already shows the title above
+       * it, so a level-1 heading is demoted to level 2 rather than printing the title
+       * twice. */
+      const level = heading[1].length === 1 ? 2 : heading[1].length;
+      out.push('<h' + level + '>' + kkInline(heading[2]) + '</h' + level + '>');
+      continue;
+    }
+
+    if (/^\s*([-*_])\s*(\1\s*){2,}$/.test(line)) { flush(); out.push('<hr>'); continue; }
+
+    if (line.includes('|') && i + 1 < lines.length && isTableSep(lines[i + 1])) {
+      flush();
+      const head = splitRow(line);
+      i += 1;
+      const body = [];
+      while (i + 1 < lines.length && lines[i + 1].includes('|') && lines[i + 1].trim()) {
+        i += 1;
+        body.push(splitRow(lines[i]));
+      }
+      /* ⚠️ Wrapped in a scroller. Measured 2026-10-03: this corpus has 13 tables in one
+       * document and five of them were **clipped** — 41, 89 and 162px cut off at the
+       * right edge, with the missing cells simply not there. A table wider than its
+       * column cannot shrink, so the choice is scroll or truncate, and a spec document
+       * that silently drops the rightmost column of an endpoint table is a spec document
+       * that is wrong. */
+      out.push('<div class="kk-tablewrap"><table><thead><tr>' +
+        head.map((cell) => '<th>' + kkInline(cell) + '</th>').join('') +
+        '</tr></thead><tbody>' +
+        body.map((row) => '<tr>' + head.map((_, c) =>
+          '<td>' + kkInline(row[c] || '') + '</td>').join('') + '</tr>').join('') +
+        '</tbody></table></div>');
+      continue;
+    }
+
+    if (bullet(line) || numbered(line)) {
+      flush();
+      const ordered = numbered(line);
+      const items = [];
+      while (i < lines.length) {
+        const current = lines[i];
+        const match = current.match(ordered && numbered(current) ? /^\s*\d+[.)]\s+(.*)$/
+                                                              : /^\s*[-*+]\s+(.*)$/);
+        if (!match) {
+          /* A continuation line belongs to the item above it, which is how a wrapped
+           * list item reads. Anything else ends the list. */
+          if (items.length && /^\s{2,}\S/.test(current) && !bullet(current) && !numbered(current)) {
+            items[items.length - 1] += ' ' + current.trim();
+            i += 1;
+            continue;
+          }
+          break;
+        }
+        items.push(match[1]);
+        i += 1;
+      }
+      i -= 1;
+      const tag = ordered ? 'ol' : 'ul';
+      out.push('<' + tag + '>' + items.map((it) =>
+        '<li>' + kkInline(it) + '</li>').join('') + '</' + tag + '>');
+      continue;
+    }
+
+    if (/^\s*&gt;/.test(line)) {
+      flush();
+      const quoted = [];
+      /* ⚠️ The marker is matched as `&gt;`, not `>`, and that is not a typo.
+       *
+       * This function escapes the whole source before any rule runs — that ordering is
+       * the XSS property, and it is not negotiable. But escaping rewrites `>` to `&gt;`,
+       * so a blockquote test written the obvious way can never match: every `>` in this
+       * loop is *already* `&gt;`. It is not a special case, either. `>` is the only
+       * character that both carries block syntax and is escaped, so matching the escaped
+       * spelling is exactly equivalent to matching the raw one — and the alternative
+       * (un-escape, parse, re-escape) is the thing that eventually ships a hole. */
+      while (i < lines.length && /^\s*&gt;/.test(lines[i])) {
+        quoted.push(lines[i].replace(/^\s*&gt;\s?/, ''));
+        i += 1;
+      }
+      i -= 1;
+      out.push('<blockquote>' + kkInline(quoted.join('\n')) + '</blockquote>');
+      continue;
+    }
+
+    para.push(line);
+  }
+  flush();
+  return out.join('\n');
+}
+
+function kkTagRow(tags) {
+  if (!tags || !tags.length) return '';
+  return `<div class="kk-tags">${tags.map((t) => badge('info', esc(t))).join('')}</div>`;
+}
+/* ═══ 7. system mail ═════════════════════════════════════════════════════════ */
+
+async function renderMail(host) {
+  const d = state.cache.mail || (state.cache.mail = await api('/mail'));
+  host.innerHTML = `
+    <div class="kd-card">
+      <div class="kd-card-hd">
+        <h2>${esc(T('系统邮箱 / System mail'))}</h2>
+        <span class="kd-sub">${esc(d.configured ? T('已配置 / configured')
+          : (d.source === 'env' ? T('来自环境变量 / from the environment')
+                                 : T('未配置 / not configured')))}</span>
+        <span class="kd-grow"></span>
+        <button class="kd-btn sm primary" id="ml-save" ${state.readOnly ? 'disabled' : ''}>${esc(T('保存 / Save'))}</button>
+        <button class="kd-btn sm danger" id="ml-clear" ${state.readOnly ? 'disabled' : ''}>${esc(T('清除 / Clear'))}</button>
+      </div>
+      <div class="kd-card-bd">
+        <div class="kd-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="kd-field">
+            <label class="kd-label">${esc(T('SMTP 主机 / Host'))}</label>
+            <input class="kd-input" id="ml-host" value="${esc(d.host || '')}" data-i18n-skip>
+          </div>
+          <div class="kd-field">
+            <label class="kd-label">${esc(T('端口 / Port'))}</label>
+            <input class="kd-input" id="ml-port" type="number" value="${esc(d.port || 465)}" data-i18n-skip>
+          </div>
+          <div class="kd-field">
+            <label class="kd-label">${esc(T('加密 / Security'))}</label>
+            <select class="kd-select" id="ml-security">
+              ${['ssl', 'starttls', 'plain'].map((v) =>
+                `<option value="${v}"${d.security === v ? ' selected' : ''}>${v}</option>`).join('')}
+            </select>
+          </div>
+          <div class="kd-field">
+            <label class="kd-label">${esc(T('发信地址 / Sender'))}</label>
+            <input class="kd-input" id="ml-sender" value="${esc(d.sender || '')}" data-i18n-skip>
+          </div>
+          <div class="kd-field">
+            <label class="kd-label">${esc(T('用户名 / Username'))}</label>
+            <input class="kd-input" id="ml-username" value="${esc(d.username || '')}" data-i18n-skip>
+          </div>
+          <div class="kd-field">
+            <label class="kd-label">${esc(T('密码 / Password'))}</label>
+            <input class="kd-input" id="ml-password" type="password" placeholder="${esc(
+              d.has_password ? T('已保存，留空表示不改 / stored — leave blank to keep')
+                             : T('未设置 / not set'))}" data-i18n-skip>
+            <div class="kd-help">${esc(T('留空 = 保持不变，而不是清空。 / Blank means KEEP, not clear.'))}</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('ml-save').addEventListener('click', async () => {
+    const pw = document.getElementById('ml-password').value;
+    const body = {
+      host: document.getElementById('ml-host').value.trim() || null,
+      port: Number(document.getElementById('ml-port').value) || null,
+      security: document.getElementById('ml-security').value,
+      username: document.getElementById('ml-username').value.trim() || null,
+      sender: document.getElementById('ml-sender').value.trim() || null,
+    };
+    /* ⚠️ `undefined` is the whole point. The API reads a MISSING password as "keep the
+     * stored one" and an empty string as "clear it". Sending `''` for an untouched
+     * field would delete a credential the operator cannot see. */
+    if (pw !== '') body.password = pw;
+    try {
+      state.cache.mail = await api('/mail', { method: 'PUT', body });
+      kldNotify(T('已保存 / Saved'), 'ok');
+      await render();
+    } catch (err) { kldFail(err); }
+  });
+
+  document.getElementById('ml-clear').addEventListener('click', async () => {
+    if (!await kldConfirm(T('清除系统邮箱配置 / Clear the mail settings'),
+      esc(T('删掉数据库里的这份配置，回退到 .env 的 SMTP_* 变量。注册码只能显示在页面上。 / Drops the stored settings and falls back to the SMTP_* variables. Codes then surface on the page instead of by email.')),
+      T('清除 / Clear'), true)) return;
+    try {
+      state.cache.mail = await api('/mail', { method: 'DELETE' });
+      kldNotify(T('已清除 / Cleared'), 'ok');
+      await render();
+    } catch (err) { kldFail(err); }
+  });
+}
+
+/* ═══ 8. recycle bin ═════════════════════════════════════════════════════════ */
+
+async function renderBin(host) {
+  const d = state.cache.bin || (state.cache.bin = await api('/recycle-bin'));
+  host.innerHTML = `
+    <div class="kd-card">
+      <div class="kd-card-hd">
+        <h2>${esc(T('回收站 / Recycle bin'))}</h2>
+        <span class="kd-sub">${esc(T('保留期 / Grace'))} ${d.grace_days} ${esc(T('天 / days'))}</span>
+        <span class="kd-grow"></span>
+        <button class="kd-btn sm danger" id="bin-sweep" ${state.readOnly || !d.accounts.length ? 'disabled' : ''}>${esc(T('立即清除到期账号 / Sweep due accounts'))}</button>
+      </div>
+      <div class="kd-card-bd tight">
+        <table class="kd-table">
+          <thead><tr>
+            <th>${esc(T('邮箱 / Email'))}</th>
+            <th>${esc(T('姓名 / Name'))}</th>
+            <th>${esc(T('关闭时间 / Closed'))}</th>
+            <th>${esc(T('清除时间 / Erased at'))}</th>
+            <th class="kd-num">${esc(T('剩余 / Days left'))}</th>
+            <th>${esc(T('操作人 / By'))}</th>
+            <th style="text-align:right">${esc(T('操作 / Actions'))}</th>
+          </tr></thead>
+          <tbody>${d.accounts.length ? d.accounts.map((a) => `
+            <tr>
+              <td class="kd-mono">${esc(a.email)}</td>
+              <td>${esc(a.display_name || '—')}</td>
+              <td>${esc(when(a.deleted_at))}</td>
+              <td>${esc(when(a.purge_after))}</td>
+              <td class="kd-num">${a.days_left == null ? '—'
+                : (a.days_left <= 0 ? badge('danger', esc(T('已到期 / due')))
+                                    : a.days_left)}</td>
+              <td>${esc(a.deleted_by || '—')}</td>
+              <td style="text-align:right;white-space:nowrap">
+                <button class="kd-btn sm" data-report="${a.id}">${esc(T('预演清除 / Preview'))}</button>
+                <button class="kd-btn sm danger" data-purge="${a.id}" data-email="${esc(a.email)}" ${state.readOnly ? 'disabled' : ''}>${esc(T('立即清除 / Erase now'))}</button>
+              </td>
+            </tr>`).join('') : emptyRow(7, '回收站是空的 / The bin is empty')}</tbody>
+        </table>
+      </div>
+    </div>`;
+
+  document.getElementById('bin-sweep').addEventListener('click', async () => {
+    if (!await kldConfirm(T('清除所有到期账号 / Erase every account past its deadline'),
+      esc(T('这一批不会再有确认弹窗：它们的期限已经过了。 / No further confirmation: these are already past the deadline shown to you.')),
+      T('清除 / Erase'), true)) return;
+    try {
+      const r = await api('/recycle-bin/sweep', { method: 'POST' });
+      state.cache.bin = null; state.cache.overview = null;
+      kldNotify(T('已清除 / Erased') + '：' + r.count, 'ok');
+      await render();
+    } catch (err) { kldFail(err); }
+  });
+
+  host.querySelectorAll('[data-purge]').forEach((b) => b.addEventListener('click', async () => {
+    const email = b.dataset.email;
+    const v = await kldPrompt(T('立即清除 / Erase now'),
+      esc(T('不可恢复。输入该账号邮箱以确认。 / Irreversible. Type the account email to confirm.')),
+      T('永久删除 / Erase'), email);
+    if (v === null) return;
+    if (v.trim().toLowerCase() !== email.trim().toLowerCase()) {
+      return kldNotify(T('邮箱不一致，已取消 / The address did not match; nothing was done'), 'err');
+    }
+    try {
+      await api('/recycle-bin/' + b.dataset.purge + '?confirm=' + encodeURIComponent(v),
+                { method: 'DELETE' });
+      state.cache.bin = null; state.cache.overview = null;
+      kldNotify(T('已清除 / Erased'), 'ok');
+      await render();
+    } catch (err) { kldFail(err); }
+  }));
+
+  host.querySelectorAll('[data-report]').forEach((b) => b.addEventListener('click', async () => {
+    try {
+      const d2 = await api('/recycle-bin/' + b.dataset.report + '/report');
+      const kldNotifyLines = Object.entries(d2.would_remove || {})
+        .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.length : v}`).join('\n');
+      await kldConfirm(T('预演清除 / Preview the erasure'),
+        `<div class="kd-mono">${esc(d2.user.email)}</div>
+         <pre style="white-space:pre-wrap;margin-top:8px">${esc(kldNotifyLines || '—')}</pre>`,
+        T('关闭 / Close'));
+    } catch (err) { kldFail(err); }
+  }));
+}
+
+/* ═══ 9. audit ═══════════════════════════════════════════════════════════════ */
+
+async function renderAudit(host) {
+  const d = state.cache.audit || (state.cache.audit = await api('/activity?limit=300'));
+  host.innerHTML = `
+    <div class="kd-card">
+      <div class="kd-card-hd">
+        <h2>${esc(T('审计 / Audit trail'))}</h2>
+        <span class="kd-sub">${d.activity.length}</span>
+        <span class="kd-grow"></span>
+        <button class="kd-btn sm" id="au-reload">${esc(T('刷新 / Reload'))}</button>
+      </div>
+      <div class="kd-card-bd tight">
+        <table class="kd-table">
+          <thead><tr>
+            <th>${esc(T('时间 / When'))}</th>
+            <th>${esc(T('账号 / Who'))}</th>
+            <th>${esc(T('方式 / Method'))}</th>
+            <th>${esc(T('路径 / Path'))}</th>
+            <th>${esc(T('详情 / Detail'))}</th>
+          </tr></thead>
+          <tbody>${d.activity.length ? d.activity.map((a) => `
+            <tr>
+              <td style="white-space:nowrap">${esc(when(a.created_at))}</td>
+              <td class="kd-mono">${esc(a.user_email || '—')}</td>
+              <td>${a.method === 'CONSOLE' ? badge('info', esc(T('管理后台 / console')))
+                                          : esc(a.method || '—')}</td>
+              <td class="kd-mono">${esc(a.path || '—')}</td>
+              <td class="kd-meta">${esc(a.detail || '')}</td>
+            </tr>`).join('') : emptyRow(5, '还没有记录 / Nothing recorded yet')}</tbody>
+        </table>
+      </div>
+    </div>`;
+  document.getElementById('au-reload').addEventListener('click', async () => {
+    state.cache.audit = null; await render();
+  });
+}
+
+/* ═══ 10. system ══════════════════════════════════════════════════════════════ */
+
+async function renderSystem(host) {
+  const d = state.cache.system || (state.cache.system = await api('/system'));
+  host.innerHTML = `
+    <div class="kd-card">
+      <div class="kd-card-hd"><h2>${esc(T('进程状态 / Process state'))}</h2></div>
+      <div class="kd-card-bd">
+        <table class="kd-table"><tbody>
+          <tr><td>${esc(T('版本 / Version'))}</td><td class="kd-mono">${esc(d.version)}</td></tr>
+          <tr><td>${esc(T('端口 / Port'))}</td><td class="kd-mono">${d.admin_port}</td></tr>
+          <tr><td>${esc(T('当前操作者 / Signed in as'))}</td>
+              <td class="kd-mono">${esc(d.actor.email || '')} ${badge('info', esc(label(d.actor.role)))}</td></tr>
+          <tr><td>${esc(T('黑名单域名 / Blocked domains'))}</td><td class="kd-num">${d.settings_keys.blocked_email_domains}</td></tr>
+          <tr><td>${esc(T('模块来源 / Module source'))}</td><td class="kd-mono">${esc(d.settings_keys.modules_source)}</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+
+    <div class="kd-card">
+      <div class="kd-card-hd">
+        <h2>${esc(T('只读开关 / Read-only switch'))}</h2>
+        <span class="kd-grow"></span>
+        ${d.read_only ? badge('warn', esc(T('当前只读 / read-only now')))
+                      : badge('ok', esc(T('当前可写 / writable now')))}
+      </div>
+      <div class="kd-card-bd">
+        <div class="kd-note">${esc(T(
+          '关掉之后：所有读取照常，所有写入被拒绝——包括已经打开的会话。它不是一扇墙：读取不关，所以正在处理问题的操作者还能看见发生了什么。'
+        ))}</div>
+        <div class="kd-help" style="margin:8px 0">
+          ${esc(T('重新开启需要输入你自己的邮箱。这一步是为了让「关掉」是一个决定，而不是一次误点；它挡不住有意为之的人，这不是它的用途。 / Turning it back on asks for your own address, so switching it off stays a decision rather than a mis-click. It does not stop anyone determined — that is not what it is for.'))}
+        </div>
+        <button class="kd-btn ${d.read_only ? 'primary' : 'danger'}" id="sys-toggle">
+          ${d.read_only ? esc(T('重新开启写操作 / Turn writes back on'))
+                        : esc(T('切到只读 / Switch to read-only'))}
+        </button>
+      </div>
+    </div>
+
+    <div class="kd-card">
+      <div class="kd-card-hd"><h2>${esc(T('关于这个进程 / About this process'))}</h2></div>
+      <div class="kd-card-bd">
+        <div class="kd-help">${esc(T(
+          '管理后台是独立的进程、独立的端口、独立的页面，和主应用共用同一个数据库。它的会话用不同的 audience 签名，所以控制台的登录态在主应用上无效，反之亦然。'
+        ))}</div>
+        <div class="kd-help" style="margin-top:8px">${esc(T(
+          'The console is a separate process, on its own port, with its own UI, sharing one database with the main app. Its sessions are signed with a different audience, so a console login is worthless against the app and vice versa.'
+        ))}</div>
+        <div class="kd-mono" style="margin-top:12px;color:var(--text-3)">
+          GET ${esc(API)}/openapi.json
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('sys-toggle').addEventListener('click', async () => {
+    if (d.read_only) {
+      const v = await kldPrompt(T('重新开启写操作 / Turn writes back on'),
+        esc(T('输入你自己的邮箱地址以确认。 / Type your own email address to confirm.')),
+        T('开启 / Turn on'), '');
+      if (v === null) return;
+      try {
+        const r = await api('/system/console-login',
+          { method: 'PUT', body: { enabled: true, confirm_email: v } });
+        state.readOnly = r.read_only;
+        state.cache.system = null; state.cache.overview = null;
+        applyReadOnly(); kldNotify(T('已开启写操作 / Writes are on'), 'ok');
+        await render();
+      } catch (err) { kldFail(err); }
+    } else {
+      const ok = await kldConfirm(T('切到只读 / Switch to read-only'),
+        esc(T('所有写入会被立刻拒绝，读取不受影响。随时可以在这里改回来。 / Every change is refused immediately; nothing about reading changes. You can undo this here at any time.')),
+        T('切到只读 / Switch'), true);
+      if (!ok) return;
+      try {
+        const r = await api('/system/console-login', { method: 'PUT', body: { enabled: false } });
+        state.readOnly = r.read_only;
+        state.cache.system = null; state.cache.overview = null;
+        applyReadOnly(); kldNotify(T('已切到只读 / Read-only'), 'ok');
+        await render();
+      } catch (err) { kldFail(err); }
+    }
+  });
+}
+
+/* ═══ read-only plumbing ════════════════════════════════════════════════════ */
+
+function applyReadOnly() {
+  document.getElementById('ro-banner').hidden = !state.readOnly;
+  document.getElementById('ro-badge').innerHTML = state.readOnly
+    ? badge('warn', esc(T('只读 / read-only'))) : '';
+  /* Every mutating control is disabled, not just the ones on the current page: the
+   * switch flips with a session already open, so a page rendered before the flip would
+   * otherwise keep live buttons. */
+  document.querySelectorAll('#shell .kd-btn.primary, #shell .kd-btn.danger')
+    .forEach((b) => { if (!b.id.startsWith('sys-toggle')) b.disabled = state.readOnly; });
+  document.querySelectorAll('#shell .kd-switch').forEach((b) => { b.disabled = true; });
+  document.querySelectorAll('#shell [data-preset], #shell [data-transfer-go]')
+    .forEach((b) => { b.disabled = state.readOnly; });
+}
+document.getElementById('ro-back').addEventListener('click', () => go('system'));
+
+/* ═══ sign-in ═══════════════════════════════════════════════════════════════ */
+
+function showThrottled() {
+  document.getElementById('throttled').hidden = false;
+  document.getElementById('login').hidden = true;
+  document.getElementById('shell').hidden = true;
+}
+
+async function doLogin() {
+  const err = document.getElementById('li-err');
+  err.hidden = true;
+  const email = document.getElementById('li-email').value.trim();
+  const password = document.getElementById('li-pass').value;
+  try {
+    const d = await api('/login', { method: 'POST', body: { email, password } });
+    state.user = d.user;
+    await afterLogin();
+  } catch (e) {
+    if (e.status === 403 && /switched off|已被关闭/.test(e.message)) return showThrottled();
+    err.textContent = e.message || String(e);
+    err.hidden = false;
+  }
+}
+
+document.getElementById('li-go').addEventListener('click', doLogin);
+document.getElementById('li-pass').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') doLogin();
+});
+document.getElementById('do-logout').addEventListener('click', async () => {
+  await api('/logout', { method: 'POST' });
+  state.user = null; state.cache = {};
+  document.getElementById('shell').hidden = true;
+  document.getElementById('login').hidden = false;
+  document.getElementById('li-pass').value = '';
+});
+
+async function afterLogin() {
+  document.getElementById('login').hidden = true;
+  document.getElementById('shell').hidden = false;
+  const me = await api('/me');
+  state.user = me.user;
+  state.readOnly = !!me.read_only;
+  /* The `title` carries the full address; the box itself truncates on one line. See
+   * `.kd-rail-ft` — an email has no spaces, so any wrapping rule breaks it mid-word. */
+  document.getElementById('rail-ft').innerHTML =
+    `<div title="${esc(me.user.email || '')}" style="overflow:hidden;text-overflow:ellipsis">`
+    + esc(me.user.email || '') + `</div><div>${esc(T('超管 / operator'))}</div>`;
+  applyReadOnly();
+  /* The overview is fetched once up front because the nav shows its pending-approval
+   * count, and a badge that is only right after the first click is a badge nobody
+   * trusts. */
+  state.cache.overview = await api('/overview');
+  const start = (location.hash || '').replace('#', '');
+  await go(PAGES.some((p) => p.key === start) ? start : 'overview');
+}
+
+(async function boot() {
+  applyTheme(state.theme);
+  try {
+    const me = await api('/me');
+    state.user = me.user;
+    await afterLogin();
+  } catch (e) {
+    if (e.status === 401) {
+      document.getElementById('login').hidden = false;
+      document.getElementById('li-email').focus();
+    } else if (e.status === 403) {
+      showThrottled();
+    } else {
+      document.getElementById('login').hidden = false;
+      kldFail(e);
+    }
+  }
+  /* A language switch re-renders: the labels live in the DOM as resolved strings, and
+   * the walker only fixes pairs it can see. Pushing the data back through `render()` is
+   * what keeps the tables from staying in the previous language. */
+  document.addEventListener('klado:lang', async () => {
+    const here = PAGES.find((p) => p.key === state.page);
+    document.getElementById('pg-title').textContent = pageTitle(here);
+    document.getElementById('pg-sub').textContent = pageSub(here);
+    setPageMeta(here);
+    renderNav();
+    await render();
+  });
+})();
+</script>
+</body>
+</html>

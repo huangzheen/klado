@@ -1,0 +1,161 @@
+/* Klado admin console — theme layer.
+ *
+ * ⚠️ THE ONLY FILE IN THIS DIRECTORY THAT MAY NAME A COLOUR.
+ *
+ * `console.css` and `index.html` use `var(--token)` and nothing else. A colour literal
+ * in a page rule is a rule that only works in one theme, and the symptom is not a broken
+ * page — it is a card that reads correctly at 10am and disappears into the background at
+ * 10pm, which nobody catches until a customer screenshots it.
+ *
+ * The token NAMES are deliberately identical to the main app's `frontend/out/theme.css`,
+ * so the two programs are the same product rather than two things that happen to share a
+ * name. ⚠️ The VALUES here are a copy, not a reference, and that is a real duplication:
+ * the console may not load a stylesheet out of `api/`, because then the "separate
+ * program on its own port" would be a fiction with a shared asset directory. If a token
+ * is added or re-tuned, change it in BOTH files, and the screenshot script
+ * (`api/tests/shot_admin_console_ui.py`) renders both themes so a half-finished change
+ * shows up as a contrast failure rather than as a preference.
+ *
+ * The split that catches people, repeated from the main app's rules because it is the
+ * single most common mistake here:
+ *
+ *   --accent        when the colour is TEXT or an ICON. It gets lighter in dark mode.
+ *   --accent-fill   when the colour is a BACKGROUND with white text on it. It stays dark
+ *                   in both themes, because a light fill with white text is 2.5:1.
+ *   --text-on-ink / --text-on-accent   always white, forever. Not "usually white".
+ */
+:root {
+  color-scheme: light;
+
+  /* ── surfaces ───────────────────────────────────────────────────────────── */
+  --bg:             #f6f8fb;
+  --surface:        #ffffff;
+  --surface-2:      #f8fafc;   /* a card inside a card, stripe rows */
+  --surface-3:      #f1f5f9;   /* pressed / inset areas */
+  --border:         #dce1e7;
+  --border-strong:  #c8d0dc;
+
+  /* ── text ───────────────────────────────────────────────────────────────── */
+  --text-1:         #182433;
+  --text-2:         rgba(24, 36, 51, .75);
+  /* ⚠️ The same value the main app now uses.
+   *
+   * It was deliberately different: the main app's `--text-3` was #6c7a91, which is
+   * 4.35:1 on `--surface` and 4.16:1 on `--surface-2` — under WCAG AA's 4.5:1, on a
+   * token that carries 12px secondary labels on every surface in the product. This file
+   * had been corrected to #637185 (4.96 / 4.74) while the main app had not, and the
+   * divergence was documented here rather than fixed, because re-tuning a token that
+   * 15,600 lines of UI depend on belongs with the main app's own verifications.
+   *
+   * That verification has now happened (`api/tests/shot_settings_admin_ui.py` measures
+   * contrast on the rendered page), the main app was changed to match, and the two
+   * frontends agree. ⚠️ If one of these files is ever re-tuned alone, the other must
+   * follow: the screenshot scripts for both measure it, and a "looks the same as the
+   * other app" claim is not a measurement.
+   */
+  --text-3:         #637185;
+  --text-inv:       #ffffff;
+
+  /* ── accent ─────────────────────────────────────────────────────────────── */
+  --accent:         #066fd1;
+  --accent-fill:    #066fd1;
+  --accent-hover:   #0559a8;
+  --accent-soft:    rgba(6, 111, 209, .10);
+  --accent-border:  rgba(6, 111, 209, .30);
+  --hover:          rgba(24, 36, 51, .05);
+  --active:         rgba(24, 36, 51, .09);
+
+  /* ── status ─────────────────────────────────────────────────────────────── */
+  --ok:             #15803d;
+  --warn:           #b45309;
+  --danger:         #b42318;
+  --info:           #0559a8;
+  --ok-soft:        #e8f5ee;
+  --warn-soft:      #fef3c7;
+  --danger-soft:    #fdf0f0;
+  --info-soft:      #eaf2ff;
+  --ok-border:      #bbf7d0;
+  --warn-border:    #fde68a;
+  --danger-border:  #fecaca;
+  --info-border:    #bfdbfe;
+
+  --text-on-ink:      #ffffff;
+  --text-on-accent:   #ffffff;
+
+  --ink:           #051c2c;
+  --ink-soft:      #0a2e4a;
+
+  /* ── elevation ──────────────────────────────────────────────────────────── */
+  --shadow-1: 0 1px 2px rgba(15, 23, 42, .06);
+  --shadow-2: 0 4px 12px rgba(15, 23, 42, .10);
+  --shadow-3: 0 12px 32px rgba(15, 23, 42, .18);
+  --overlay:  rgba(15, 23, 42, .45);
+
+  /* ── geometry ───────────────────────────────────────────────────────────── */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-pill: 999px;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --nav-w: 208px;
+  --nav-h: 52px;
+  --topbar-h: 52px;
+
+  --font: "Roboto Condensed", -apple-system, "Helvetica Neue", "PingFang SC",
+          "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg:             #0e1621;
+  --surface:        #16202e;
+  --surface-2:      #1b2735;
+  --surface-3:      #202d3d;
+  --border:         #26364a;
+  --border-strong:  #35485f;
+
+  --text-1:         #e6ebf2;
+  --text-2:         rgba(230, 235, 242, .74);
+  --text-3:         #94a3b8;
+  --text-inv:       #ffffff;
+
+  /* ⚠️ --accent is the TEXT/icon form and does get lighter here.
+   * ⚠️ --accent-fill deliberately does NOT: it is always a background under white text,
+   * and lightening it is what drops the button label to 2.5:1. This is the exact pair
+   * the main app's rules call out, reproduced because the mistake is the same. */
+  --accent:         #5ca8f5;
+  --accent-fill:    #0b5fbd;
+  --accent-hover:   #0a6fd4;
+  --accent-soft:    rgba(92, 168, 245, .14);
+  --accent-border:  rgba(92, 168, 245, .32);
+  --hover:          rgba(230, 235, 242, .06);
+  --active:         rgba(230, 235, 242, .11);
+
+  --ok:             #4ade80;
+  --warn:           #fbbf24;
+  --danger:         #f87171;
+  --info:           #5ca8f5;
+  --ok-soft:        rgba(74, 222, 128, .14);
+  --warn-soft:      rgba(251, 191, 36, .14);
+  --danger-soft:    rgba(248, 113, 113, .14);
+  --info-soft:      rgba(92, 168, 245, .14);
+  --ok-border:      rgba(74, 222, 128, .32);
+  --warn-border:    rgba(251, 191, 36, .32);
+  --danger-border:  rgba(248, 113, 113, .32);
+  --info-border:    rgba(92, 168, 245, .32);
+
+  --ink:           #0a1119;
+  --ink-soft:      #10202f;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .40);
+  --shadow-2: 0 4px 12px rgba(0, 0, 0, .50);
+  --shadow-3: 0 12px 32px rgba(0, 0, 0, .60);
+  --overlay:  rgba(0, 0, 0, .62);
+}

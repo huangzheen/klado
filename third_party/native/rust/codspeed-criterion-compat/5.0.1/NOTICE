@@ -1,0 +1,8 @@
+Upstream codspeed-criterion-compat 5.0.1 declares MIT OR Apache-2.0.
+This distribution selects Apache-2.0. The release omits a standalone licence file;
+the standard SPDX full text is supplied alongside the unmodified upstream source,
+which retains every original copyright/author notice. Template placeholders in the
+standard text do not replace those original notices.
+
+
+Original package authors: ['Arthur Pastel <arthur@codspeed.io>']

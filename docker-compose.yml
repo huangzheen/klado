@@ -1,0 +1,195 @@
+# Klado — local deployment, four services on one machine.
+#
+#   postgres   the database, data in a named volume (survives image rebuilds)
+#   minio      the object store, data in a named volume (survives image rebuilds)
+#   app        the main SPA + API on :8000
+#   admin      the operator console on :8787 (its own process, own port)
+#
+# ⚠️ minio is not optional. Every feature that stores bytes — document cards
+# (pptx/xlsx/pdf/docx), cover images, Data Center uploads, dashboard snapshots —
+# goes through `services/oss_storage.py` and there is no local-filesystem
+# fallback. With no object store configured, those endpoints answer 502
+# ("文件存储失败 / the file could not be stored") while everything text-shaped
+# keeps working, which is exactly the kind of half-working deployment that gets
+# discovered at the worst moment.
+#
+# The app and the console share one image and one database but are deliberately
+# separate services: neither starts or checks the other, which is the same
+# separation `scripts/start_admin.sh` documents. If the console needs
+# `app_users` to exist, the answer is "the app created it", never "the console
+# created an accounts table and hoped".
+#
+# ⚠️ `.env` is NOT consumed by compose. Compose reads it for its own variable
+# substitution, but the app reads it through `klado_shared/config.py`, which is
+# the only implementation that knows the real precedence rules. Values below are
+# therefore passed as explicit environment entries, and the mounted file is what
+# the application itself loads.
+
+name: klado
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-klado}
+      POSTGRES_USER: ${POSTGRES_USER:-klado}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — copy .env.example to .env and fill it in}
+      # The image refuses to initialise into a non-empty PGDATA; the default
+      # volume mount point is fine, but being explicit keeps a volume reused
+      # across versions from tripping over it.
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    # Not published to the host. The app reaches it over the compose network by
+    # service name; nothing outside this project needs the port, and publishing
+    # it would put a password-protected database on every interface.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-klado} -d ${POSTGRES_DB:-klado}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  minio:
+    # ⚠️ The image is named `minio` because that is what the app's S3-compatible
+    # mode and the .env vocabulary talk about, but the server is rustfs, not
+    # MinIO. MinIO's own image is unreachable from here: every
+    # minio/minio tag resolves to 403 "denied" through this machine's registry
+    # mirrors, while minio/mc pulls fine — a mirror-side block, not a typo.
+    # rustfs is S3-compatible, speaks SigV4 (what boto3 sends), and reads the
+    # same MINIO_ROOT_USER / MINIO_ROOT_PASSWORD credential names, so the
+    # compose file and .env stay identical whichever server is behind them.
+    image: rustfs/rustfs:latest
+    restart: unless-stopped
+    command: ["server", "/data"]
+    environment:
+      # The server refuses to be configured by accident: it falls back to a
+      # well-known built-in credential when these are absent. Fail the deploy
+      # instead of shipping that.
+      MINIO_ROOT_USER: ${OSS_ACCESS_KEY_ID:?OSS_ACCESS_KEY_ID is required — fill it in .env}
+      MINIO_ROOT_PASSWORD: ${OSS_ACCESS_KEY_SECRET:?OSS_ACCESS_KEY_SECRET is required — fill it in .env}
+      RUSTFS_VOLUMES: /data
+    volumes:
+      - minio-data:/data
+    # Not published to the host. The app reaches it over the compose network by
+    # service name; the admin console is a debugging aid, not a product surface.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS --max-time 3 http://127.0.0.1:9000/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # One-shot: create the bucket, then exit. S3 servers have no "create the
+  # bucket if it is missing" on first use, so without this the very first
+  # put_object fails with NoSuchBucket — and only the first, which is what makes
+  # it look flaky rather than unconfigured.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        mc alias set klado http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
+        mc mb --ignore-existing klado/$${OSS_BUCKET_NAME} &&
+        mc anonymous set none klado/$${OSS_BUCKET_NAME} &&
+        echo "bucket ready: klado/$${OSS_BUCKET_NAME}"
+    environment:
+      MINIO_ROOT_USER: ${OSS_ACCESS_KEY_ID:?OSS_ACCESS_KEY_ID is required}
+      MINIO_ROOT_PASSWORD: ${OSS_ACCESS_KEY_SECRET:?OSS_ACCESS_KEY_SECRET is required}
+      OSS_BUCKET_NAME: ${OSS_BUCKET_NAME:-klado}
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: klado:latest
+    restart: unless-stopped
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    working_dir: /app/api
+    env_file:
+      - .env
+    environment:
+      # The .env example ships `POSTGRES_HOST=localhost`, which is correct for a
+      # bare-metal run and wrong in here: inside this container the database is
+      # the compose service. The override is deliberate and load-bearing.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+    ports:
+      # ⚠️ `KLADO_APP_BIND` exists so a fresh install can be reachable only from
+      # this machine. The default is EMPTY, which renders as ":8000:8000" and is
+      # byte-for-byte the behaviour this deployment has always had — an existing
+      # `.env` without the variable changes nothing. Set it to `127.0.0.1` to keep
+      # a new install off the network; see deploy.sh.
+      - "${KLADO_APP_BIND:-}:${KLADO_APP_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    volumes:
+      # The .env is bind-mounted read-only rather than baked into the image, so
+      # rotating SECRET_KEY never requires a rebuild. Read-only so a process bug
+      # cannot rewrite the credentials.
+      - ./.env:/app/.env:ro
+      # Playwright's browser download (~115 MB) lives here. It is a volume rather
+      # than an image layer on purpose: baked in, every `docker compose up --build`
+      # would re-download it, and a container that lost it fails at runtime —
+      # `/api/reports/{slug}/document/preview.pdf` renders with headless Chromium,
+      # so a missing browser is a 503 on a document feature, not just a broken
+      # verification script.
+      - playwright-browsers:/root/.cache/ms-playwright
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS --max-time 3 http://127.0.0.1:8000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  admin:
+    # No `build` here on purpose. Both services run the same image, and giving
+    # both a build section makes `docker compose build` run two builds that
+    # race to tag the same klado:latest — the second one to finish wins, and
+    # which half of the output that lands under the tag is a coin flip. `app`
+    # owns the build; `admin` just uses the tag it produced.
+    image: klado:latest
+    # The console needs the same database the app uses (it reads app_users), so
+    # it waits for postgres exactly as the app does. It additionally waits for
+    # `app` to have started, so the ordering "app creates its tables, then the
+    # console reads them" holds on a first, empty install.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      app:
+        condition: service_started
+    restart: unless-stopped
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8787"]
+    working_dir: /app/api-admin
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+    ports:
+      # Same default-empty rule as KLADO_APP_BIND above.
+      - "${KLADO_ADMIN_BIND:-}:${KLADO_ADMIN_PORT:-8787}:8787"
+    volumes:
+      - ./.env:/app/.env:ro
+
+volumes:
+  postgres-data:
+    name: klado-postgres-data
+  minio-data:
+    name: klado-minio-data
+  playwright-browsers:
+    name: klado-playwright-browsers

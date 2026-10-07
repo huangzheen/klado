@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>运营监控 · Operations Monitor</title>
+<style>
+  /* Style B — 运营监控 / operations monitor.
+     The opposite of A. A's first question is "how are we"; B's is "what is on fire",
+     so the page opens with exceptions, not with totals, and the totals are demoted
+     to a strip along the top. A monitor that shows four reassuring averages above a
+     table of damage is a monitor nobody scrolls past. */
+  .strip { display: flex; gap: 22px; flex-wrap: wrap; align-items: baseline;
+           padding: 0 2px 14px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+  .strip .m { display: flex; flex-direction: column; gap: 1px; }
+  .strip .m b { font-size: 19px; font-weight: 650; }
+  .strip .m span { font-size: 11.5px; color: var(--text-3); }
+  .alerts { display: flex; flex-direction: column; gap: 10px; }
+  .alert { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px;
+           padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-md);
+           background: var(--surface); }
+  .alert.sev-danger { border-left: 3px solid var(--danger); }
+  .alert.sev-warn   { border-left: 3px solid var(--warn); }
+  .alert .what { font-size: 13.5px; font-weight: 600; }
+  .alert .why { font-size: 12.5px; color: var(--text-3); }
+  .alert .fig { font-size: 19px; font-weight: 650; white-space: nowrap; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  @media (max-width: 900px) { .two { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="kld-page">
+  <h1 class="kld-h1" id="t"></h1>
+  <p class="kld-sub" id="s"></p>
+
+  <div class="strip" id="strip"></div>
+  <h2 style="font-size:14px;margin:0 0 10px" id="alert-h"></h2>
+  <div class="alerts" id="alerts"></div>
+
+  <div class="two">
+    <div class="kld-card">
+      <div class="kld-card-hd"><h2 id="h1"></h2></div>
+      <div id="donut"></div>
+    </div>
+    <div class="kld-card">
+      <div class="kld-card-hd"><h2 id="h2"></h2></div>
+      <div id="dispute"></div>
+    </div>
+  </div>
+
+  <div class="kld-card" style="margin-top:16px">
+    <div class="kld-card-hd"><h2 id="h3"></h2><span class="kld-muted" id="h3n"></span></div>
+    <div id="trend"></div>
+  </div>
+
+  <p class="kld-foot" id="foot"></p>
+</div>
+
+<script>
+(async function () {
+  const F = kld.fmt;
+  const zh = (window.kladoDashboard.lang || 'zh') !== 'en';
+  const COPY = {
+    zh: { t: '运营监控', s: '按异常排序 · 2026-01 至 2026-09',
+          alertH: '需要处理（按严重度）', donut: '收入构成 · 按区域', dispute: '争议率 · 按渠道',
+          trend: '量走势 · 按区域', trendN: '月度单位数',
+          u: '2026 单位数', yoy: '同比', rev: '收入', stake: '争议金额',
+          sev: { d: '严重', w: '关注' },
+          why: { band: '价格带同比下滑最深', region: '区域同比下滑最深', chan: '渠道争议率最高' },
+          foot: '数据来源：band_monthly_2026、region_monthly_2026、channel_disputes_2026（2026-01 至 2026-09，agent 填入的样例数据）。争议率在 9 个月内各渠道取值不变，因此按渠道展示为水平条而非趋势线。',
+          loading: '正在取数…', err: '取数失败：' },
+    en: { t: 'Operations Monitor', s: 'Ranked by severity · Jan–Sep 2026',
+          alertH: 'Needs attention (by severity)', donut: 'Revenue mix · by region', dispute: 'Dispute rate · by channel',
+          trend: 'Volume trend · by region', trendN: 'Monthly units',
+          u: '2026 units', yoy: 'YoY', rev: 'Revenue', stake: 'Value at stake',
+          sev: { d: 'Severe', w: 'Watch' },
+          why: { band: 'deepest band decline', region: 'deepest region decline', chan: 'highest dispute rate' },
+          foot: 'Source: band_monthly_2026, region_monthly_2026, channel_disputes_2026 (Jan–Sep 2026; sample data entered by the agent). Dispute rates are flat across the nine months, so channels are shown as bars rather than a trend line.',
+          loading: 'Loading…', err: 'Could not load: ' }
+  };
+  const c = zh ? COPY.zh : COPY.en;
+  document.documentElement.lang = zh ? 'zh' : 'en';
+  document.getElementById('t').textContent = c.t;
+  document.getElementById('s').textContent = c.s;
+  document.getElementById('alert-h').textContent = c.alertH;
+  document.getElementById('h1').textContent = c.donut;
+  document.getElementById('h2').textContent = c.dispute;
+  document.getElementById('h3').textContent = c.trend;
+  document.getElementById('h3n').textContent = c.trendN;
+  document.getElementById('foot').textContent = c.foot;
+  document.getElementById('alerts').innerHTML = '<div class="kld-skel">' + c.loading + '</div>';
+
+  let d;
+  try {
+    const [total, bands, regions, chan, months] = await Promise.all([
+      kldQuery("SELECT sum(units_2026) AS units_2026, round(sum(revenue_2026_m)::numeric,1) AS revenue_m FROM band_monthly_2026"),
+      kldQuery("SELECT band, round(((sum(units_2026)-sum(units_2025))/sum(units_2025)*100)::numeric,1) AS yoy_pct FROM band_monthly_2026 GROUP BY band ORDER BY yoy_pct"),
+      kldQuery("SELECT region, round(((sum(units_2026)-sum(units_2025))/sum(units_2025)*100)::numeric,1) AS yoy_pct, round(sum(revenue_2026_m)::numeric,1) AS revenue_m FROM region_monthly_2026 GROUP BY region ORDER BY yoy_pct"),
+      kldQuery("SELECT channel, round(max(dispute_rate_pct)::numeric,1) AS rate, round(max(value_at_stake_m)::numeric,1) AS stake_m FROM channel_disputes_2026 WHERE channel <> 'All channels' GROUP BY channel ORDER BY rate DESC"),
+      kldQuery("SELECT month, region, units_2026 FROM region_monthly_2026 ORDER BY month, region")
+    ]);
+    d = { total: total.rows[0], bands: bands.rows, regions: regions.rows,
+          chan: chan.rows, months: months.rows };
+  } catch (e) {
+    document.getElementById('alerts').innerHTML = '<div class="kld-empty">' + c.err + e.message + '</div>';
+    document.getElementById('strip').innerHTML = '';
+    return;
+  }
+
+  const yoy = (d.total.units_2026 - 0) && d.total;
+  document.getElementById('strip').replaceChildren(
+    ...[[c.u, F.compact(d.total.units_2026)], [c.rev, F.money(d.total.revenue_m, 'M')]].map(([l, v]) =>
+      kld.el('div', { class: 'm' }, [kld.el('b', { text: v }), kld.el('span', { text: l })]))
+  );
+
+  /* The ranking is the page. Three findings, worst first, each with the number that
+     makes it a finding. A monitor that shows four reassuring averages above a table
+     of damage is a monitor nobody scrolls past. */
+  const worstBand = d.bands[0], worstRegion = d.regions[0], worstChan = d.chan[0];
+  const items = [
+    { sev: 'sev-danger', chip: c.sev.d, what: worstBand.band, why: c.why.band,
+      fig: F.pct(worstBand.yoy_pct), cls: kld.deltaClass(worstBand.yoy_pct) },
+    { sev: 'sev-warn', chip: c.sev.w, what: worstRegion.region, why: c.why.region,
+      fig: F.pct(worstRegion.yoy_pct), cls: kld.deltaClass(worstRegion.yoy_pct) },
+    { sev: 'sev-danger', chip: c.sev.d, what: worstChan.channel, why: c.why.chan,
+      fig: worstChan.rate + '%', cls: 'kld-down',
+      extra: zh ? ('争议金额 ' + F.money(worstChan.stake_m, 'M')) : (F.money(worstChan.stake_m, 'M') + ' at stake') }
+  ];
+  document.getElementById('alerts').replaceChildren(...items.map((it) =>
+    kld.el('div', { class: 'alert ' + it.sev }, [
+      kld.el('span', { class: 'kld-chip ' + (it.sev === 'sev-danger' ? 'danger' : 'warn'), text: it.chip }),
+      kld.el('div', {}, [
+        kld.el('div', { class: 'what', text: it.what }),
+        kld.el('div', { class: 'why', text: it.why + (it.extra ? ' · ' + it.extra : '') })
+      ]),
+      kld.el('div', { class: 'fig ' + it.cls, text: it.fig })
+    ])));
+
+  const draw = () => {
+    kld.donut(document.getElementById('donut'), d.regions.map((r) => ({
+      label: r.region, value: r.revenue_m
+    })), { center: F.money(d.total.revenue_m, 'M'), format: (v) => F.money(v, 'M'),
+           label: zh ? '各区域收入占比' : 'revenue share by region' });
+    kld.bars(document.getElementById('dispute'), d.chan.map((r) => ({
+      label: r.channel, value: r.rate, color: 'c2'
+    })), { format: (v) => v + '%' });
+
+    const names = d.regions.map((r) => r.region);
+    const xs = [...new Set(d.months.map((m) => m.month))];
+    const series = names.map((n, i) => {
+      const host = kld.el('div', {});
+      const pts = xs.map((month, xi) => {
+        const row = d.months.find((m) => m.month === month && m.region === n);
+        return { x: xi, y: row ? row.units_2026 : 0 };
+      });
+      kld.spark(host, pts, { height: 26, stroke: 'var(--c' + ((i % 6) + 1) + ')', fill: 'transparent' });
+      return kld.el('div', { style: 'display:grid;grid-template-columns:104px 1fr;gap:10px;align-items:center' }, [
+        kld.el('span', { class: 'kld-muted', style: 'font-size:12px', text: n }), host
+      ]);
+    });
+    document.getElementById('trend').replaceChildren(...series);
+  };
+  draw();
+  kld.onTheme(draw);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+# Compile against the system libpq rather than ship an opaque bundled native set.
+--no-binary=psycopg2-binary
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+sqlalchemy==2.0.35
+asyncpg==0.29.0
+pydantic-settings==2.5.2
+# Explicit, not just pydantic-settings' extra: core/config.py loads .env into the
+# process environment with it. Relying on the transitive copy means a future change
+# to pydantic-settings could take the app's local configuration with it.
+python-dotenv==1.2.3
+python-jose[cryptography]==3.3.0
+# Explicit, not just python-jose's extra: services/mail_config.py uses Fernet to
+# encrypt the stored SMTP password. Depending on a transitive extra means a
+# future cleanup of python-jose would silently turn that into plaintext.
+cryptography==46.0.3
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.12
+httpx==0.27.2
+pandas==2.2.3
+openpyxl==3.1.5
+oss2>=2.18.4
+# Explicit: services/oss_storage.py talks to a self-hosted S3-compatible object
+# store (MinIO) through boto3 when OSS_S3_COMPAT=1. Alibaba's OSS signing scheme
+# is rejected by plain S3 servers, so oss2 cannot serve that deployment. Only
+# imported lazily in S3-compatible mode; the default Alibaba Cloud path never
+# touches boto3.
+boto3==1.43.106
+pgvector==0.3.2
+psycopg2-binary==2.9.9
+apscheduler>=3.10,<4.0
+python-pptx>=1.0.0
+fonttools[woff]>=4.50.0,<5
+matplotlib>=3.9.0
+defusedxml>=0.7.1
+markitdown[pptx]>=0.1.0
+Pillow>=10.1.0
+# PDF work is split across two engines because neither can do both halves, and both are
+# permissively licensed so the product can be distributed under Apache-2.0:
+#   pypdfium2 (BSD-3-Clause OR Apache-2.0) renders pages to PNG and reports the page count;
+#   pypdf (BSD-3-Clause) assembles documents and embeds images losslessly.
+# These replace PyMuPDF, which is AGPL-3.0. All use goes through services/pdf_io.py —
+# do not import either engine outside it. Keep Pillow >= 10.1: text_pdf() relies on
+# ImageFont.load_default(size=...) returning a scalable font.
+pypdfium2>=5.14.0,<6.0.0
+pypdf>=6.19.0,<7.0.0
+openai>=1.54.0
+requests>=2.31.0
+json-repair>=0.30.0
+beautifulsoup4>=4.12.0
+langfuse>=2.0.0,<3.0.0
+playwright>=1.52.0,<2.0.0
+# docx → HTML for the Workspace document-card preview (services/doc_preview.py). Pure
+# python + lxml, no LibreOffice: the preview renders the .docx into HTML and Chromium
+# paints the PDF, so a Word file can be read in place without shipping an office suite.
+python-docx>=1.1.2
+
+# Dependency marker evaluation in the licence audit is a direct runtime use.
+packaging==24.2

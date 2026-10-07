@@ -1,0 +1,18 @@
+{
+  "packages": [
+    {
+      "name": "psycopg2-binary",
+      "version": "2.9.9",
+      "file": "psycopg2-binary-2.9.9.tar.gz",
+      "source": "https://files.pythonhosted.org/packages/fc/07/e720e53bfab016ebcc34241695ccc06a9e3d91ba19b40ca81317afbdc440/psycopg2-binary-2.9.9.tar.gz",
+      "sha256": "7f01846810177d829c7692f1f5ada8096762d9172af1b1a28d4ab5b77c923c1c"
+    },
+    {
+      "name": "certifi",
+      "version": "2026.7.22",
+      "file": "certifi-2026.7.22.tar.gz",
+      "source": "https://files.pythonhosted.org/packages/a3/c2/24167ea9858356b47a87a50d39908bfdb72ceeefe0041586e704e5376b3a/certifi-2026.7.22.tar.gz",
+      "sha256": "741e2c3b351ddf169a738da9f2c048608ff7f2c5cc02f1ebc6b118bb090d5d55"
+    }
+  ]
+}

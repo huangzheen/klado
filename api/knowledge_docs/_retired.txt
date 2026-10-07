@@ -1,0 +1,104 @@
+# Retired knowledge documents — explicit, versioned deletion.
+#
+# Deleting a .md file does NOT delete the document: the startup reconciler only
+# inserts or updates. Deletion is an intentional act, so it has to be written
+# here (one document_id per line, '#' starts a comment) and then deployed.
+# Every id on this list is deleted from public.ai_knowledge_documents on startup
+# if it is still present; leaving an id here after it is gone is harmless.
+#
+# 2026-09-23: temporary document used by the file-sourcing roundtrip verification on
+# test. It never reached production; keeping the id here is harmless and documents
+# what happened. Remove this line if the id is ever needed again.
+test:file-source-roundtrip
+
+# 2026-09-29: `format-html-slides` (HTML 幻灯片生成规范, v1.5). Its `bm-slide` /
+# `create_html_deck` markers are NOT rendered by the Workspace, so it was a retired
+# spec that still ranked #1 for the query "format-html-slides" (405 points, measured
+# against the 33-document corpus) — an agent taking only top-1 would write 960x540
+# inline-CSS pages the runtime no longer accepts. Replaced by `format-report-html`
+# (16:9 deck). The body is archived at docs/legacy-format-html-slides.md.
+klado-v2:format-html-slides
+
+# 2026-09-30: business-knowledge migration (user-approved, one doc at a time). These six
+# documents are business CONTENT, not system manual — they moved to the Workspace wiki
+# (ai_knowledge_items). Cross-references in staying docs were rewritten to the kb: ids in the
+# same commit. NOTE: the wiki lives in the PROD database only — on test these six docs are gone from curated with no wiki copy.
+# ⚠️ 2026-10-01 correction: the test wiki DOES have all six now (verified live: `scope=mine`
+# returns exactly these six slugs, and `GET /knowledge/document/kb:brand-bosch-siemens-positioning`
+# answers 200). The line above was true on 2026-09-30 and is kept because it explains why test
+# looked empty for a while — but do not act on it. What was NOT fixed in that commit and is fixed
+# now: the agent skill package still cited three of them as `klado-v2:…` ids, which 404
+# (curated no longer holds them). `kb:` is the only form that resolves, and it needs
+# `scope=business` to be searchable.
+# Public-snapshot slugs >55 chars are truncated by the publish endpoint (…-202-public,
+# …-2026-yt-public); the kb: ids below cite the truncated forms.
+klado-v2:brand-bosch-siemens-positioning
+klado-v2:market-cn-macro-housing-home-trends-2021-2026-ytd
+klado-v2:market-cn-channel-landscape-internal-mapping-2026
+klado-v2:product-strategy-playbook
+klado-v2:brief-template
+klado-v2:brief-md-nf-cba-90
+# 2026-10-01: slim-down to the six retained areas (user-approved). Everything below was a
+# business-module document — SKU/product/platform/CMF, competitor library, GFK/market,
+# sales/invoice/profitability/inventory, planning, the analysis-recipe rules, and the
+# external-agent SQL/MCP bridge. The modules those documents describe were removed, so the
+# documents go with them. Files deleted in the same commit; deleting a file alone never
+# deletes the row (see the header above).
+#   data-klado-dictionary     — SKU/sales field dictionary
+#   data-channel-alias        — channel CN↔EN map for the sales tables
+#   data-quality-coverage     — sales-data coverage caveats
+#   data-sql-cookbook         — SQL templates against the business tables
+#   product-business-case-playbook / rule-analysis-scenarios / rule-evidence-recommendation
+#   rule-golden-answer-examples / rule-performance-analysis / rule-segment-deepdive
+#                             — the business analysis rule set
+#   media-fridge-poster       — fridge lifestyle/poster image spec (deleted module)
+#   format-bsh-visual-style   — BSH PPT/poster/material visual rules (deleted module)
+#   competitor-library        — competitor feature library
+#   external-agent-bridge     — capability → real SQL/MCP endpoint map for external agents
+#   business-defaults         — sales/channel default metrics dictionary
+klado-v2:data-klado-dictionary
+klado-v2:data-channel-alias
+klado-v2:data-quality-coverage
+klado-v2:data-sql-cookbook
+klado-v2:product-business-case-playbook
+klado-v2:rule-analysis-scenarios
+klado-v2:rule-evidence-recommendation
+klado-v2:rule-golden-answer-examples
+klado-v2:rule-performance-analysis
+klado-v2:rule-segment-deepdive
+klado-v2:media-fridge-poster
+klado-v2:format-bsh-visual-style
+coolmaster:competitor-library
+klado-v2:business-defaults
+coolmaster:external-agent-bridge
+# 2026-10-03: 说明书统一为中文，删除 canonical 英文副本。
+#
+# 19 篇 canonical 里的 16 篇与对应 .zh 版正文**逐字节相同**（只差 document_id），
+# 另 3 篇（format-output-standards / format-meeting-one-pager /
+# format-number-readability / task-routing-playbook 之一类）的 canonical 侧才是英文
+# 标题与英文栏目名。两种情况都按用户要求删除：统一中文，并且语料不再自我重复。
+#
+# 同时把保留下来的 .zh 文档里 93 处指向 canonical id 的交叉引用改写成 :zh id ——
+# 不改就是 93 个死链，agent 读到「全文见 klado-v2:runtime-contract」而那篇已经不存在。
+#
+# 删除 .md 文件本身**不会**删数据库行；这个清单才是删除动作，部署时由启动对账执行。
+
+klado-v2:format-calendar-event
+klado-v2:format-chart-style
+klado-v2:format-dashboard
+klado-v2:format-dynamic-report
+klado-v2:format-interactive-report
+klado-v2:format-knowledge-page
+klado-v2:format-meeting-one-pager
+klado-v2:format-number-readability
+klado-v2:format-output-standards
+klado-v2:format-pptx-export
+klado-v2:format-product-line-layout
+klado-v2:format-report-deck
+klado-v2:format-report-html
+klado-v2:format-workspace-documents
+klado-v2:media-image-prompt
+klado-v2:orgs-and-sharing
+klado-v2:ownership-and-lifecycle
+klado-v2:runtime-contract
+klado-v2:task-routing-playbook

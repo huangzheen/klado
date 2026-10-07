@@ -1,0 +1,539 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   theme.css — Klado design tokens and themes.
+
+   One place defines every colour. A page stylesheet never writes a literal
+   colour; it reads a token from here. That is what makes the theme switch a
+   one-attribute change instead of a second stylesheet.
+
+   How a theme is selected
+   -----------------------
+   `<html data-theme="light|dark">` — set by `theme.js`, remembered in
+   localStorage. `data-bs-theme` is set to the same value so Bootstrap/Tabler
+   components (form controls, modals, dropdowns) follow along.
+
+   Reading order in `index.html` matters: vendor CSS → theme.css → app.css, so
+   the tokens here win over Tabler's own defaults and app.css wins over both.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Light (default) ───────────────────────────────────────────────────── */
+:root {
+  color-scheme: light;
+
+  /* Surfaces, from the page behind everything up to a raised element. */
+  --bg:            #f6f8fb;
+  --surface:       #ffffff;
+  --surface-2:     #f8fafc;   /* a card inside a card, stripe rows */
+  --surface-3:     #f1f5f9;   /* pressed / inset areas */
+  --border:        #dce1e7;
+  --border-strong: #c8d0dc;
+
+  /* Text, strongest to weakest. `--text-inv` sits on `--accent`. */
+  --text-1:        #182433;
+  --text-2:        rgba(24, 36, 51, .75);
+  /* ⚠️ Was #6c7a91, and it did not pass AA.
+   *
+   * Measured, not eyeballed: #6c7a91 is 4.35:1 on `--surface` (#ffffff) and 4.16:1 on
+   * `--surface-2` (#f8f8fb) — both under WCAG AA's 4.5:1 — and this token carries
+   * secondary text on essentially every surface in the product: card notes, table
+   * captions, placeholders, timestamps, the `.adm-note` under each Settings card.
+   * #637185 is 4.96 / 4.74 / 4.66 on white / surface-2 / bg, so it passes everywhere it
+   * can actually land. It is also the value `api-admin/frontend/theme.css` uses, so the
+   * two frontends finally agree on what "muted" means.
+   */
+  --text-3:        #637185;
+  --text-inv:      #ffffff;
+
+  /* Interaction.
+     `--accent` is the accent as *ink* (links, active tab labels, icon colours) and
+     gets lighter in the dark theme. `--accent-fill` is the accent as a *surface*
+     behind white text and therefore stays dark enough to carry it. */
+  --accent:        #066fd1;
+  --accent-fill:   #066fd1;
+  --accent-hover:  #0559a8;
+  --accent-soft:   rgba(6, 111, 209, .10);
+  --accent-border: rgba(6, 111, 209, .30);
+  --hover:         rgba(24, 36, 51, .05);
+  --active:        rgba(24, 36, 51, .09);
+
+  /* Status — the four colours a state chip or a delta figure uses. These are
+     deliberately the *text-safe* shades: they are read far more often as a label
+     than used as a fill, and Tabler's own (#2fb344 / #d63939 / #f76707) only
+     reached ~2.7:1 on white. */
+  --ok:            #15803d;
+  --warn:          #b45309;
+  --danger:        #b42318;
+  --info:          #0559a8;
+  --ok-soft:       #e8f5ee;
+  --warn-soft:     #fef3c7;
+  --danger-soft:   #fdf0f0;
+  --info-soft:     #eaf2ff;
+  --ok-border:     #bbf7d0;
+  --warn-border:   #fde68a;
+  --danger-border: #fecaca;
+  --info-border:   #bfdbfe;
+
+  /* Document types — the colour of a file icon in the Workspace list. 2026-10-04.
+     The row lost its second line, so the ICON is the only thing that says which format
+     this is; grey, four near-identical glyphs identified nothing.
+
+     ⚠️ Measured, and both numbers matter, because either alone would be a wrong pick:
+     · against the surface — worst case is white, since a light theme's lightest
+       background is its worst background. All four ≥ 5.0:1, above the 4.5:1 the rest
+       of this file holds itself to for text, and far above the 3:1 WCAG actually asks
+       of a graphical object.
+     · against EACH OTHER — the four are all similar in lightness on purpose (a light
+       and a dark icon in the same column would read as "this one matters"), so they
+       are told apart by HUE, and hue separation is only meaningful in a perceptual
+       space. In CIE76 ΔE the closest pair, PPTX vs PDF, is 33.0. That pair is exactly
+       the one a naive brand-colour choice collapses: Office PowerPoint is a red-orange
+       and Adobe's is a red, and at ΔE 16.4 the two icons are the same icon. PDF is
+       pushed toward rose specifically to open that gap — recognisable, still red.
+
+     ⚠️ app.css maps these by `data-doctype` and nothing else. Keep the two files'
+     vocabularies in step, and add a fifth type HERE, not there. */
+  --doc-pptx: #c2410c;
+  --doc-pdf:  #be123c;
+  --doc-docx: #1d4ed8;
+  --doc-xlsx: #15803d;
+
+  /* Text on a filled surface. Both stay white: `--ink` surfaces stay dark in the
+     dark theme, and `--accent-fill` is chosen dark enough to carry white too. */
+  --text-on-ink:    #ffffff;
+  --text-on-accent: #ffffff;
+
+  /* Ink — the darkest element of the palette (dark headers, hero icons). */
+  --ink:           #051c2c;
+  --ink-soft:      #0a2e4a;
+
+  /* Elevation & scrims */
+  --shadow-1: 0 1px 2px rgba(15, 23, 42, .06);
+  --shadow-2: 0 4px 12px rgba(15, 23, 42, .10);
+  --shadow-3: 0 12px 32px rgba(15, 23, 42, .18);
+  --overlay:  rgba(15, 23, 42, .45);
+
+  /* Gradient surfaces. Kept as tokens because a gradient cannot be composed
+     from the flat tokens above without changing the page's whole feel. */
+  --bg-gradient:    linear-gradient(160deg, #eef3fa 0%, #f7f9fc 55%, #e9eff8 100%);
+  --cover-gradient: linear-gradient(140deg, #e8eef7, #dbe4f0 55%, #cfdae9);
+  --accent-2:       #818cf8;
+
+  /* Chart series, in the order a chart should reach for them. */
+  --c1: #066fd1;  --c2: #f76707;  --c3: #2fb344;
+  --c4: #9333ea;  --c5: #4299e1;  --c6: #eab308;
+  --c-muted: #dce1e7;
+
+  /* Gold — the "active/curated" marker (the knowledge-base star). Deliberately
+     NOT the warning colour: an amber warning and a gold star say different
+     things, and `--warn` is dark enough to read as text while this stays bright. */
+  --gold: #f59e0b;
+
+  /* Calendar milestone mark — the little triangle sitting on the chart's bottom
+     edge. "todo" is the neutral mark, the other two colour it once the task is
+     done or overdue. */
+  --ms-todo: #ffffff;
+  --ms-done: #1f7a4a;
+  --ms-late: #b62f2f;
+
+  /* Shape & rhythm */
+  --r-sm: 4px;  --r-md: 8px;  --r-lg: 12px;  --r-pill: 999px;
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;  --sp-4: 16px;  --sp-5: 24px;  --sp-6: 32px;
+  --nav-h: 52px;
+
+  --font: "Roboto Condensed", -apple-system, 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+
+  /* ── Agent 办公室（主页）· 等距 3D 场景 ────────────────────────────────
+     The office scene is drawn as SVG polygons, and an SVG `fill` cannot be
+     expressed as "the token, but 20% darker" — so each MATERIAL is three
+     tokens, one per visible face, rather than one token plus a shade factor
+     computed in JS. `office.js` builds the face name by convention:
+     `--off-m-<material>`, `-a` (the +x side), `-b` (the +y side).
+
+     ⚠️ This is a diagram, not a chart, so the palette is deliberately quiet:
+     one warm floor, near-white furniture, and colour reserved for exactly two
+     things — the agent's own hue, and the status colour. Everything else is a
+     neutral, because a room where twelve people work has to be readable at a
+     glance and colour is the only channel carrying state. */
+  --off-m-floor:     #ece5d8;  --off-m-floor-a: #b7a68c;  --off-m-floor-b: #d1c2a9;
+  --off-m-wall:      #e7edf0;  --off-m-wall-a:  #b8cad0;  --off-m-wall-b:  #d1dfe3;
+  --off-m-desk:      #ffffff;  --off-m-desk-a:  #dfe3e8;  --off-m-desk-b:  #eaedf1;
+  --off-m-chair:     #526b76;  --off-m-chair-a: #293f4c;  --off-m-chair-b: #3d5663;
+  --off-m-pot:       #e8e2d8;  --off-m-pot-a:   #d3ccbf;  --off-m-pot-b:   #dfd8cc;
+  --off-m-wood:      #e1ba84;  --off-m-wood-a:  #af8558;  --off-m-wood-b:  #c79c69;
+  --off-m-plant:     #8fbf8a;  --off-m-plant-a: #6ea268;  --off-m-plant-b: #7eb078;
+  --off-monitor:     #2b3038;  --off-monitor-off: #b9bfc8;
+  --off-glass:       #dceaf5;
+  --off-route:       #9fb6d8;
+  --off-shadow:      rgba(11, 16, 32, .12);
+  /* ⚠️ The edge is the whole reason the room is readable in the light theme.
+     Without it the furniture is white on a warm-white floor and the whole thing
+     collapses into one shape — which is exactly what the first build looked
+     like, and why the dark theme (where the values differ by more) read better
+     than the light one it was designed for. */
+  --off-stage-bg: #e7eff1; --off-stage-light: #f8faf6;
+  --off-plaque: #264955; --off-plaque-text: #ffffff;
+  --off-edge:        #94a8b1;
+  --off-aisle:       #eae4d9;
+  --off-sweep-op:    .7;
+
+  /* ── Beast avatars ────────────────────────────────────────────────────
+     Six animals, three tokens each, and the three are the same three for
+     every animal: the coat, its darker partner (stripes, mane, patches, the
+     shaded jaw) and nothing else. A per-animal palette would be six times the
+     tokens for a difference the SHAPE already carries — the ears, the horns,
+     the muzzle length. What the coat has to do is stay apart from the desk
+     and the floor behind it, which is why they are all mid-value and none of
+     them is the floor's warm cream.
+
+     `--off-fur-pale` is shared on purpose: a muzzle, an inner ear and a belly
+     are the same pale patch on all six, and one token keeps them reading as
+     one drawing style instead of six. */
+  --off-fur-tiger:  #e59a3f;  --off-fur-tiger-d:  #3b2b1f;
+  --off-fur-ox:     #a97f56;  --off-fur-ox-d:     #4d3a28;
+  --off-fur-horse:  #8c5a34;  --off-fur-horse-d:  #3a2617;
+  --off-fur-cat:    #9aa3ad;  --off-fur-cat-d:    #3f4750;
+  --off-fur-rabbit: #f0e6da;  --off-fur-rabbit-d: #b9a894;
+  --off-fur-hippo:  #9d8fa6;  --off-fur-hippo-d:  #5b4f63;
+  --off-fur-pale:   #fbf3e6;
+
+  /* ── Clothing ──────────────────────────────────────────────────────────
+     Red / blue / yellow / green / black, each with a darker partner for the
+     arms and the underside of the torso. The shirt is the loudest thing a
+     reader will look at, and the darker partner is what stops it being a flat
+     sticker: the same three-face reasoning as the furniture, minus the third
+     face because a torso is drawn from the front.
+
+     ⚠️ Black is NOT `#000` here. Pure black on a dark-theme desk is a hole
+     with a hairline around it, and the room's own reading rule — a figure must
+     separate from the surface behind it — is broken by the one colour that has
+     nothing left to give. It is the darkest value that still holds an edge. */
+  --off-cloth-red:    #d94b45;  --off-cloth-red-d:    #a8332e;
+  --off-cloth-blue:   #3a72d0;  --off-cloth-blue-d:   #2a54a0;
+  --off-cloth-yellow: #e8b93a;  --off-cloth-yellow-d: #b98d1f;
+  --off-cloth-green:  #3fa05c;  --off-cloth-green-d:  #2c7743;
+  --off-cloth-black:  #2c2f36;  --off-cloth-black-d:  #1b1d22;
+
+  /* Agent states. Four of the seven are the product's own status tokens, so a
+     state chip in the office and a state chip elsewhere are the same colour by
+     construction. `idle` is `--text-3`: "nothing is happening" must read as
+     quiet, not as a fifth status. The two that have no product counterpart
+     (searching, writing) are held to the same bar the rest of this file holds
+     itself to — both clear 5:1 on `--surface`. */
+  /* ⚠️ THREE presence states, not seven work states, and the count is the whole
+     point: the room used to colour a desk by what an agent was supposedly doing
+     (检索 / 编码 / 撰写 / 验证 / 待人工 / 完成 / 异常) out of an inventory that
+     nothing in the product records. What the data supports is presence — has this
+     account's agent credential been used, and how recently — so that is what is
+     coloured. `--off-st-active` is the only one that has to be conspicuous: it is
+     the single claim the room makes.
+     `never` is deliberately the quietest token in the set. A desk nobody's agent
+     has used is the normal state on a fresh deployment, and drawing it as an
+     absence-alarm would make the room cry wolf on day one. */
+  --off-st-never:   var(--text-3);
+  --off-st-idle:    var(--warn);
+  --off-st-active:  var(--ok);
+
+
+  /* Event-bar palette — LIGHT. It lives here rather than in JS because a bar needs a
+     different triple per theme; `index.html` explains why one triple cannot
+     serve both surfaces. Light TINT fill, saturated mid-dark INK. */
+  --cal-meeting-fill: #d8e0ee;
+  --cal-meeting-ink:  #0054e5;
+  --cal-meeting-edge: #7495d1;
+  --cal-review-fill: #b2e5eb;
+  --cal-review-ink:  #006973;
+  --cal-review-edge: #65a0a8;
+  --cal-launch-fill: #b4eebf;
+  --cal-launch-ink:  #007132;
+  --cal-launch-edge: #65a773;
+  --cal-promotion-fill: #e9d0b4;
+  --cal-promotion-ink:  #7f4f00;
+  --cal-promotion-edge: #b58d5e;
+  --cal-campaign-fill: #ebd0de;
+  --cal-campaign-ink:  #af007d;
+  --cal-campaign-edge: #d56aa9;
+  --cal-media-fill: #e2cde9;
+  --cal-media-ink:  #9800b9;
+  --cal-media-edge: #bb74d1;
+  --cal-content-fill: #e8cbc1;
+  --cal-content-ink:  #9b3700;
+  --cal-content-edge: #cf7d5d;
+  --cal-offline-fill: #ebd1d2;
+  --cal-offline-ink:  #b9003f;
+  --cal-offline-edge: #d5737e;
+  --cal-training-fill: #d6d4e9;
+  --cal-training-ink:  #7100fb;
+  --cal-training-edge: #948ad1;
+  --cal-research-fill: #cbe0ec;
+  --cal-research-ink:  #00668e;
+  --cal-research-edge: #639dbd;
+  --cal-planning-fill: #abeede;
+  --cal-planning-ink:  #006f5f;
+  --cal-planning-edge: #65a395;
+  --cal-other-fill: #e5e2d8;
+  --cal-other-ink:  #626262;
+  --cal-other-edge: #959595;
+}
+
+/* ── Dark ──────────────────────────────────────────────────────────────── */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg:            #0e1621;
+  --surface:       #16202e;
+  --surface-2:     #1b2735;
+  --surface-3:     #202d3d;
+  --border:        #26364a;
+  --border-strong: #35485f;
+
+  --text-1:        #e6ebf2;
+  --text-2:        rgba(230, 235, 242, .74);
+  /* Small text (the calendar's day numbers are 9px) never reaches its full
+     colour: antialiasing leaves the rendered pixels a shade darker. --text-3
+     carries most of the app's captions, so it is set for that worst case. */
+  --text-3:        #a3b1c4;
+  --text-inv:      #0e1621;
+
+  /* The accent is lightened: #066fd1 on a dark surface fails contrast. The filled
+     variant stays deep so white text on it keeps its contrast. */
+  --accent:        #5aa9f0;
+  --accent-fill:   #1f5fa8;
+  --accent-hover:  #6cb2f0;
+  --accent-soft:   rgba(74, 158, 234, .16);
+  --accent-border: rgba(74, 158, 234, .40);
+  --hover:         rgba(230, 235, 242, .07);
+  --active:        rgba(230, 235, 242, .12);
+
+  --ok:            #3ecf6a;
+  --warn:          #f0a53a;
+  --danger:        #f0616d;
+  --info:          #4a9eea;
+  --ok-soft:       rgba(62, 207, 106, .14);
+  --warn-soft:     rgba(240, 165, 58, .14);
+  --danger-soft:   rgba(240, 97, 109, .14);
+  --info-soft:     rgba(74, 158, 234, .14);
+  --ok-border:     rgba(62, 207, 106, .38);
+  --warn-border:   rgba(240, 165, 58, .38);
+  --danger-border: rgba(240, 97, 109, .38);
+  --info-border:   rgba(74, 158, 234, .38);
+
+  /* The light theme's document colours cannot be reused here — every one of them is
+     dark, and dark on `--bg` (#0e1621) is where an icon stops being an icon. Same
+     four roles, same brand reading, lightened. Measured against the DARKEST surface
+     (the page background, not `--surface`, because a lighter icon on a darker page is
+     the worst case): all four ≥ 6.2:1. And against each other, CIE76 ΔE 40.8 for the
+     closest pair (PPTX vs PDF) — better separated than the light theme's 33.0, because
+     a dark theme can afford more lightness spread between the four. */
+  --doc-pptx: #f59e4b;
+  --doc-pdf:  #f26d6d;
+  --doc-docx: #6ba7f0;
+  --doc-xlsx: #4cc47a;
+
+  /* In dark the "ink" surfaces sit *above* the page instead of below it. */
+  --ink:           #1b2735;
+  --ink-soft:      #202d3d;
+
+  /* Elevation reads as shadow-and-light-edge rather than shadow alone. */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .40);
+  --shadow-2: 0 4px 14px rgba(0, 0, 0, .45);
+  --shadow-3: 0 14px 36px rgba(0, 0, 0, .55);
+  --overlay:  rgba(0, 0, 0, .60);
+
+  --bg-gradient:    linear-gradient(160deg, #111c2a 0%, #0e1621 55%, #121e2d 100%);
+  --cover-gradient: linear-gradient(140deg, #1c2836, #17222f 55%, #1f2d3d);
+  --accent-2:       #93a5f5;
+
+  --c1: #4a9eea;  --c2: #f0a53a;  --c3: #3ecf6a;
+  --c4: #b98cf0;  --c5: #63b8f5;  --c6: #e5c452;
+  --c-muted: #35485f;
+
+  --gold: #f5b544;
+
+  /* White would vanish on the dark month grid; the mark stays light instead. */
+  --ms-todo: #cfd8e3;
+  --ms-done: #4ea87a;
+  --ms-late: #f0616d;
+
+  /* Agent 办公室 — the scene inverts with the theme, same relative face order
+     (top brightest, then -b, then -a) so the isometric shading still reads.
+     ⚠️ The monitor screen gets DARKER here, not lighter: in a dark room an
+     unlit screen is the darkest thing on the desk, and a light one would make
+     an idle station look like the only thing switched on. */
+  --off-m-floor:     #1a2532;  --off-m-floor-a: #111a24;  --off-m-floor-b: #16202b;
+  --off-m-wall:      #1e2937;  --off-m-wall-a:  #151f2b;  --off-m-wall-b:  #1a2431;
+  --off-m-desk:      #2b3949;  --off-m-desk-a:  #1d2734;  --off-m-desk-b:  #243040;
+  --off-m-chair:     #2b3949;  --off-m-chair-a: #1d2734;  --off-m-chair-b: #243040;
+  --off-m-pot:       #2a3442;  --off-m-pot-a:   #1b232e;  --off-m-pot-b:   #222b37;
+  --off-m-wood:      #80694e;  --off-m-wood-a:  #493d33;  --off-m-wood-b:  #64523f;
+  --off-m-plant:     #6aa862;  --off-m-plant-a: #4d8a48;  --off-m-plant-b: #5e9a56;
+  --off-monitor:     #0d1319;  --off-monitor-off: #46525f;
+  --off-glass:       #1e3a4d;
+  --off-route:       #4a6a94;
+  --off-shadow:      rgba(0, 0, 0, .45);
+  --off-stage-bg: #0f1926; --off-stage-light: #243c4a;
+  --off-plaque: #93c5d0; --off-plaque-text: #102431;
+  --off-edge:        #35485f;
+  --off-aisle:       #141d28;
+  /* A white light sweep that reads as daylight on a light floor reads as a
+     flashbulb on a dark one, so it is dialled right down here. */
+  --off-sweep-op:    .22;
+
+  /* ── Beast avatars, dark ───────────────────────────────────────────────
+     ⚠️ Every coat is LIGHTER here than in the light theme, which is the
+     opposite of the furniture. The furniture inverts (white desks become
+     dark) because it is lit from above by the room; an animal's coat is its
+     own colour, and the dark room is a dark BACKDROP. A coat at its light
+     value disappears into `--off-m-desk` in this theme and the figure reads
+     as a smear. Darkened further would lose the animal; lightened is what
+     keeps it an animal. */
+  --off-fur-tiger:  #f0b06a;  --off-fur-tiger-d:  #4a3626;
+  --off-fur-ox:     #c69a70;  --off-fur-ox-d:     #5d4630;
+  --off-fur-horse:  #b07c50;  --off-fur-horse-d:  #4a3320;
+  --off-fur-cat:    #b6bfc9;  --off-fur-cat-d:    #4a525b;
+  --off-fur-rabbit: #f2e9de;  --off-fur-rabbit-d: #c6b5a1;
+  --off-fur-hippo:  #b8a9c1;  --off-fur-hippo-d:  #6b5e73;
+  --off-fur-pale:   #fdf6ea;
+
+  /* Lifted for the same reason, and black most of all: on a dark desk a dark
+     shirt is the one thing in the room with no edge. These are the same five
+     colours read for a dark room, not five different colours. */
+  --off-cloth-red:    #e8695f;  --off-cloth-red-d:    #a33b33;
+  --off-cloth-blue:   #5b93e8;  --off-cloth-blue-d:   #2f5aa5;
+  --off-cloth-yellow: #f0c65a;  --off-cloth-yellow-d: #b99324;
+  --off-cloth-green:  #4fb872;  --off-cloth-green-d:  #2e7a4c;
+  --off-cloth-black:  #4a4f59;  --off-cloth-black-d:  #2c3038;
+
+  /* ⚠️ The dark set inherits three of the four light-state tokens from the shared
+     block above, and deliberately does NOT redefine them. `never` and `idle` are
+     `text-3` and `warn` in both themes, which is the right answer: "hasn't been
+     here" and "was here, isn't now" are the same facts at either background, and a
+     dark-only shade for them would be a colour that means one thing in one theme. */
+  --off-st-active:  #34d399;
+
+
+  /* Event-bar palette — DARK. The same hues held fixed — a type must not change colour
+     when the reader flips the theme — with L and C re-solved against the dark
+     surface: a dark tint carries a light ink, a light tint a dark one. */
+  --cal-meeting-fill: #294069;
+  --cal-meeting-ink:  #82aeff;
+  --cal-meeting-edge: #5b82c8;
+  --cal-review-fill: #324c4f;
+  --cal-review-ink:  #00ccde;
+  --cal-review-edge: #588d94;
+  --cal-launch-fill: #36533c;
+  --cal-launch-ink:  #00dd67;
+  --cal-launch-edge: #589265;
+  --cal-promotion-fill: #4a3b29;
+  --cal-promotion-ink:  #ed9800;
+  --cal-promotion-edge: #9f7b52;
+  --cal-campaign-fill: #6d3a57;
+  --cal-campaign-ink:  #ff9fd4;
+  --cal-campaign-edge: #bd5b94;
+  --cal-media-fill: #593564;
+  --cal-media-ink:  #e592ff;
+  --cal-media-edge: #aa5ec1;
+  --cal-content-fill: #523327;
+  --cal-content-ink:  #ff8452;
+  --cal-content-edge: #b66d51;
+  --cal-offline-fill: #6c383d;
+  --cal-offline-ink:  #ff9da6;
+  --cal-offline-edge: #c55d6a;
+  --cal-training-fill: #53458c;
+  --cal-training-ink:  #c5bdff;
+  --cal-training-edge: #8274c9;
+  --cal-research-fill: #304855;
+  --cal-research-ink:  #39c0ff;
+  --cal-research-edge: #578aa6;
+  --cal-planning-fill: #39564f;
+  --cal-planning-ink:  #00debf;
+  --cal-planning-edge: #588f83;
+  --cal-other-fill: #44423d;
+  --cal-other-ink:  #b1b1b1;
+  --cal-other-edge: #828282;
+}
+
+/* ── Legacy names ──────────────────────────────────────────────────────────
+   The application CSS grew up on these names; they stay as aliases so a rule
+   written years ago picks up the theme for free. New rules should use the
+   semantic names above. */
+:root {
+  --blue:      var(--accent);
+  --blue-lt:   var(--info);
+  --teal:      #00857a;
+  --green:     var(--ok);
+  --red:       var(--danger);
+  --amber:     var(--warn);
+  --purple:    #5c4ebf;
+  --navy:      var(--ink);
+  --navy-mid:  var(--ink-soft);
+  --navy-lite: var(--ink-soft);
+  --border-dk: var(--border-strong);
+  --sidebar-w: 260px;
+  --ai-w:      320px;
+}
+
+/* ── Tabler / Bootstrap bridge ─────────────────────────────────────────────
+   Vendor components (form controls, modals, dropdowns, nav, tables) read
+   `--tblr-*` and `--bs-*`. Point the ones we actually surface at our tokens so
+   a vendor widget and a hand-written one cannot disagree about the theme. */
+:root,
+:root[data-theme="dark"] {
+  --tblr-primary:                  var(--accent);
+  --tblr-primary-rgb:              6, 111, 209;
+  --tblr-body-bg:                  var(--bg);
+  --tblr-body-color:               var(--text-1);
+  --tblr-bg-surface:               var(--surface);
+  --tblr-border-color:             var(--border);
+  --tblr-border-color-translucent: var(--border-strong);
+  --tblr-secondary-color:          var(--text-2);
+  --tblr-muted:                    var(--text-3);
+  --tblr-hover-bg:                 var(--hover);
+  --tblr-radius:                   var(--r-md);
+  --tblr-font-sans-serif:          var(--font);
+  --tblr-link-color:               var(--accent);
+  --tblr-link-hover-color:         var(--accent-hover);
+
+  --bs-body-bg:      var(--bg);
+  --bs-body-color:   var(--text-1);
+  --bs-border-color: var(--border);
+  --bs-secondary-color: var(--text-2);
+  --bs-link-color:   var(--accent);
+}
+
+/* ── Base ──────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font);
+  color: var(--text-1);
+  background: var(--bg);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The switch repaints instantly; do not animate every surface at once. */
+html.theme-switching *, html.theme-switching *::before, html.theme-switching *::after {
+  transition: none !important;
+}
+
+::selection { background: var(--accent-soft); }
+
+/* Scrollbars — a light scrollbar on a dark page is the first thing that gives
+   a half-finished theme away. */
+* { scrollbar-color: var(--border-strong) transparent; scrollbar-width: thin; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--r-pill);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); background-clip: content-box; }
+
+/* Keyboard focus is visible in both themes; mouse clicks stay quiet. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+input, select, textarea, button { font: inherit; color: inherit; }
+input::placeholder, textarea::placeholder { color: var(--text-3); }

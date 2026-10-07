@@ -1,0 +1,315 @@
+/* ============================================================================
+   Bundled fonts — no CDN, no external requests.
+   · Roboto Condensed: the application shell's own Latin face (byte-identical,
+     extracted from index.html), so reports match the web app exactly.
+   · CoolSans SC Narrow: Noto Sans SC (SIL OFL 1.1) with every outline and
+     advance width horizontally scaled to 88% — the ratio that matches Roboto
+     Condensed's average character width. See vendor/fonts/LICENSE-*.
+   URLs are DOCUMENT-relative on purpose: this stylesheet is inlined into the
+   report HTML by the server (reports.py::_inline_deck_runtime), not linked.
+   ========================================================================== */
+@font-face{font-family:"Roboto Condensed";font-style:normal;font-weight:100 900;font-display:swap;
+  src:url(vendor/fonts/roboto-condensed-latin.woff2) format("woff2");
+  unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}
+@font-face{font-family:"Roboto Condensed";font-style:normal;font-weight:100 900;font-display:swap;
+  src:url(vendor/fonts/roboto-condensed-latin-ext.woff2) format("woff2");
+  unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;}
+@font-face{font-family:"CoolSans SC Narrow";font-style:normal;font-weight:400;font-display:swap;
+  src:url(vendor/fonts/coolsans-sc-narrow-400.woff2) format("woff2");}
+@font-face{font-family:"CoolSans SC Narrow";font-style:normal;font-weight:700;font-display:swap;
+  src:url(vendor/fonts/coolsans-sc-narrow-700.woff2) format("woff2");}
+
+/* ============================================================================
+   Report Deck — 16:9 paged presentation runtime for the Klado Workspace
+   ----------------------------------------------------------------------------
+   Authoring contract (full doc: knowledge doc `klado-v2:format-report-deck`):
+
+
+     <div class="deck">                        <!-- optional, auto-wrapped -->
+       <section class="slide"> … </section>    <!-- one element per page    -->
+       <section class="slide"> … </section>
+     </div>
+
+   Each page is a FIXED 1920x1080 design canvas. The runtime scales it to the
+   viewport instead of reflowing it, which is the whole point: the layout that
+   you see is the layout that gets exported, and it never depends on the
+   window size. Keyboard Down/Right/PageDown/Space flips a whole page.
+
+   ⚠️ Because the canvas is SCALED (not reflowed), type below ~18px is
+   unreadable on a real window. Fill a page with content, not with small text:
+   see the density rules + page recipes in `klado-v2:format-report-deck`.
+
+   This file is inlined into the served document by api/routers/reports.py, so
+   a report never depends on this file being reachable (that also makes a
+   downloaded .html self-contained). It is kept as a real file here so it can
+   be linted, and a report may also link it explicitly while authoring.
+   ========================================================================== */
+
+:root {
+  --deck-w: 1920px;
+  --deck-h: 1080px;
+  --deck-ink:   #0d1b2a;
+  --deck-mid:   #47627f;
+  --deck-soft:  #8aa0b8;
+  --deck-line:  #dfe5ee;
+  --deck-blue:  #2563eb;
+  --deck-teal:  #0f9d8f;
+  --deck-amber: #b45309;
+  --deck-bg:    #e9edf3;
+  --deck-bar-h: 44px;
+}
+
+/* ── shell ──────────────────────────────────────────────────────────────── */
+.deck {
+  position: fixed;
+  inset: 0;
+  /* ⚠️ Fill the viewport explicitly. `inset: 0` already does that — UNTIL an author writes a
+     size for `.deck` itself (a real event page carried `.deck{width:1920px;height:1080px}`,
+     a copy of the design-canvas numbers). The runtime's scale-to-fit then measured the DESIGN
+     CANVAS instead of the viewer's box, computed scale .90, and `overflow: hidden` cropped
+     13% off the right and 20% off the bottom of every page. Declared here, in the injected
+     copy (which is inserted last), so it wins over an author's rule. */
+  /* `!important` on purpose: an author's <style> in the BODY is parsed after the injected
+     copy, so equal specificity is not enough — and with the box wrong the slide CENTRES on
+     1920x1080 instead of on the viewer, putting it off-screen even when its size happens to
+     fit. The runtime owns this container; it is `position: fixed; inset: 0` by design. */
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden;
+  background: var(--deck-bg);
+  color: var(--deck-ink);
+  font-family: "Roboto Condensed", "CoolSans SC Narrow", -apple-system, BlinkMacSystemFont,
+               "Segoe UI", "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 18px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── a page ─────────────────────────────────────────────────────────────── */
+/* Scoped as `.deck .slide` on purpose: it must win over a plain `.slide`
+   rule an author may write, because paging depends on this box being exact. */
+.deck .slide {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--deck-w);
+  height: var(--deck-h);
+  box-sizing: border-box;
+  padding: 76px 92px 100px;
+  display: none;
+  flex-direction: column;
+  gap: 24px;
+  overflow: hidden;
+  background: #fff;
+  /* the page boundary: this is the "page frame" you see around every page */
+  border: 1px solid var(--deck-line);
+  border-radius: 4px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, .16);
+  transform-origin: center center;
+  transform: translate(-50%, -50%) scale(var(--deck-scale, 1));
+}
+.deck .slide.is-current { display: flex; }
+
+/* ── the page rule + page number strip (bottom of every page) ───────────── */
+.deck-foot {
+  position: absolute;
+  left: 92px;
+  right: 92px;
+  bottom: 34px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  /* ⚠️ this hairline IS the visible page-break rule — don't drop it */
+  border-top: 1px solid var(--deck-line);
+  padding-top: 12px;
+  font-size: 15px;
+  color: var(--deck-soft);
+}
+.deck-foot-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deck-foot-n { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--deck-mid); letter-spacing: .02em; }
+.deck-foot-dots { display: flex; gap: 5px; align-items: center; }
+.deck-foot-dots i { width: 6px; height: 6px; border-radius: 50%; background: #ccd6e2; display: block; }
+.deck-foot-dots i.on { background: var(--deck-blue); }
+
+/* ⚠️ Printing/exporting: every page on its own sheet, one page per break. */
+@page { size: 1920px 1080px; margin: 0; }
+
+/* ── pager chrome (never part of the page, so it is excluded from export) ── */
+.deck-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--deck-bar-h);
+  padding: 0 10px 0 16px;
+  border-radius: 999px;
+  background: rgba(13, 27, 42, .88);
+  color: #fff;
+  font-size: 14px;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, .28);
+  backdrop-filter: blur(8px);
+  z-index: 20;
+  user-select: none;
+}
+.deck-bar-n { font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: .04em; }
+.deck-bar-hint { color: rgba(255, 255, 255, .58); }
+.deck-bar button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, .12); color: #fff;
+  font-size: 15px; line-height: 1; cursor: pointer; font-family: inherit;
+}
+.deck-bar button:hover { background: rgba(255, 255, 255, .24); }
+.deck-bar button:disabled { opacity: .3; cursor: default; }
+.deck-bar button.wide { width: auto; padding: 0 11px; border-radius: 999px; font-size: 13px; }
+.deck-progress { position: absolute; top: 0; left: 0; height: 3px; background: var(--deck-blue); z-index: 21; transition: width .18s ease; }
+
+/* ── language layer (one document, both languages) ──────────────────────── */
+/* Set by the runtime on every [data-lang] block that is not the active language.
+   One class beats per-language CSS selectors, which CSS cannot build from a
+   variable — and it applies to print too, so an export holds one language. */
+.deck-lang-off { display: none !important; }
+
+.deck-lang { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 999px; background: rgba(255, 255, 255, .12); }
+.deck-lang button {
+  border: 0; background: none; color: rgba(255, 255, 255, .68); cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 700; letter-spacing: .04em;
+  padding: 3px 10px; border-radius: 999px; line-height: 1.4;
+  /* The bar's generic `button` rule pins width:30px — fine for a single glyph,
+     too narrow for 中文 (two 12px CJK glyphs + padding), which then wrapped onto
+     two lines and read as stacked characters. Let these size to their label. */
+  width: auto; min-width: 30px; white-space: nowrap;
+}
+.deck-lang button:hover { color: #fff; }
+.deck-lang button.on { background: rgba(255, 255, 255, .92); color: #0d1b2a; }
+
+/* Long-form bilingual reports have no deck bar, so the switch floats. */
+.deck-langbar {
+  position: fixed; right: 16px; bottom: 16px; z-index: 9000;
+  display: inline-flex; align-items: center; gap: 2px; padding: 3px;
+  border-radius: 999px; background: rgba(13, 27, 42, .88);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, .24); backdrop-filter: blur(8px);
+}
+.deck-langbar button {
+  border: 0; background: none; color: rgba(255, 255, 255, .68); cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 700; letter-spacing: .04em;
+  padding: 5px 12px; border-radius: 999px; line-height: 1.4;
+  white-space: nowrap;                       /* a CJK label must not stack */
+}
+.deck-langbar button:hover { color: #fff; }
+.deck-langbar button.on { background: rgba(255, 255, 255, .92); color: #0d1b2a; }
+@media print { .deck-langbar { display: none !important; } }
+
+/* ── all-pages / print mode: the dashed page-break rules become visible ──── */
+.deck--all { position: static; overflow: auto; padding: 40px 0 80px; }
+.deck--all .slide {
+  position: static;
+  display: flex;
+  transform: none;
+  margin: 0 auto;
+}
+/* Keep the pager in all-pages mode — it is the only way back to single-page
+   browsing — and pin it to the viewport, since .deck itself scrolls here.
+   Only the progress line is meaningless in this layout. */
+.deck--all .deck-bar { position: fixed; bottom: 14px; }
+.deck--all .deck-progress { display: none; }
+.deck--all .slide { box-shadow: 0 8px 22px rgba(15, 23, 42, .10); }
+.deck-break {
+  display: flex; align-items: center; gap: 14px;
+  width: var(--deck-w); margin: 26px auto;
+  color: #94a3b8; font-size: 14px; letter-spacing: .08em; text-transform: uppercase;
+}
+.deck-break::before, .deck-break::after { content: ""; flex: 1; border-top: 2px dashed #b9c6d6; }
+
+@media print {
+  html, body { background: #fff; }
+  .deck { position: static; background: #fff; }
+  .deck .slide {
+    position: static; display: flex !important; transform: none;
+    page-break-after: always; break-after: page;
+    border: 0; box-shadow: none; margin: 0;
+  }
+  .deck-bar, .deck-progress, .deck-break { display: none !important; }
+}
+
+/* ============================================================================
+   Optional authoring kit — single-class selectors so a report can override any
+   of it. Nothing here is required by the runtime.
+   ========================================================================== */
+
+.s-kicker { font-size: 15px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--deck-blue); }
+.s-title  { font-size: 54px; line-height: 1.16; font-weight: 800; letter-spacing: -.02em; margin: 0; }
+.s-title-sm { font-size: 40px; }
+.s-sub    { font-size: 20px; color: var(--deck-mid); margin: 0; }
+.s-lead   { font-size: 24px; line-height: 1.5; color: var(--deck-mid); }
+.s-body   { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 20px; }
+.s-cols   { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; min-height: 0; }
+.s-cols-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; min-height: 0; }
+.s-cols-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; min-height: 0; }
+.s-kpis   { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
+.s-kpi    { border: 1px solid var(--deck-line); border-radius: 12px; padding: 20px 22px; background: #fbfcfe; }
+.s-kpi-l  { font-size: 14px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--deck-soft); }
+.s-kpi-v  { font-size: 46px; font-weight: 800; letter-spacing: -.02em; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.s-kpi-d  { font-size: 16px; color: var(--deck-mid); margin-top: 4px; }
+.s-kpi-d.up { color: #059669; } .s-kpi-d.dn { color: #dc2626; }
+.s-card   { border: 1px solid var(--deck-line); border-radius: 12px; padding: 22px 24px; background: #fff; min-height: 0; overflow: hidden; }
+.s-card-h { font-size: 15px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--deck-soft); margin-bottom: 12px; }
+.s-note   { border-left: 4px solid var(--deck-blue); background: #f3f7ff; border-radius: 0 10px 10px 0; padding: 14px 18px; font-size: 18px; color: var(--deck-mid); }
+.s-hero   { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; text-align: center; gap: 10px; }
+.s-center { text-align: center; }
+.s-chip   { display: inline-block; font-size: 14px; font-weight: 700; padding: 3px 12px; border-radius: 999px; background: rgba(37, 99, 235, .10); color: var(--deck-blue); }
+.s-muted  { color: var(--deck-mid); }
+.s-small  { font-size: 16px; }
+.s-table  { width: 100%; border-collapse: collapse; font-size: 19px; }
+.s-table th { text-align: left; font-size: 14px; text-transform: uppercase; letter-spacing: .07em; color: var(--deck-soft); padding: 8px 10px; border-bottom: 2px solid var(--deck-line); }
+.s-table td { padding: 11px 10px; border-bottom: 1px solid #eef2f7; }
+.s-table tr:last-child td { border-bottom: 0; }
+.s-table .n { text-align: right; font-variant-numeric: tabular-nums; }
+.s-code   { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 16px; background: #0d1b2a; color: #e6edf6; border-radius: 10px; padding: 18px 20px; overflow: auto; line-height: 1.6; }
+.s-code code { font-family: inherit; }
+.s-swatch { height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--deck-blue), #7dd3fc); }
+
+/* ============================================================================
+   Density kit (2026-09-26) — readable numbers, readable bars.
+   ----------------------------------------------------------------------------
+   Workspace documents were shipping hand-rolled `<div style="height:10px;width:71%">` at
+   11-13px type. The page canvas is a fixed 1920x1080 scaled to the window
+   (~0.66-0.75x), so 11px renders at ~8px: the page LOOKS full and is not
+   readable. These primitives exist so the answer to "I need a chart" is never
+   a tiny inline div: a bar here is >= 14px and a label >= 16px by construction.
+
+   Rules and page recipes: knowledge doc `klado-v2:format-report-deck`; the general
+   HTML rules live in `klado-v2:format-report-html` (§ density & readability).
+   ========================================================================== */
+
+/* One bar per row — the default shape for "compare N things" (months, channels,
+   SKUs). Mark the current/actual series with `.now`. */
+.s-bars { display: flex; flex-direction: column; gap: 12px; }
+.s-bar  { display: grid; grid-template-columns: 124px 1fr auto; align-items: center; gap: 18px; font-size: 20px; }
+.s-bar .k { font-weight: 600; color: var(--deck-mid); font-variant-numeric: tabular-nums;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s-bar .t { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.s-bar .t i { display: block; height: 18px; border-radius: 3px; background: #cfd9e6; }
+.s-bar .t i.now { background: var(--deck-blue); }
+.s-bar .v { text-align: right; font-variant-numeric: tabular-nums; color: var(--deck-mid); white-space: nowrap; }
+.s-bar .v b { color: var(--deck-ink); font-weight: 700; }
+.s-bar--tall .t i { height: 24px; }
+.s-bar--tight { font-size: 18px; }
+
+/* Direction of change, usable in any cell or sentence. */
+.s-dn { color: #dc2626; font-weight: 700; }
+.s-up { color: #059669; font-weight: 700; }
+.s-bar .v .dn, .s-bar .v .up { font-style: normal; }
+
+/* Inline proportional bar inside a table cell — puts the number and its bar on
+   the same line so a dense table is still a chart:
+     <td><span class="s-meter" style="--v:57%"></span></td>
+   `.soft` is for a comparison/previous-year series. */
+.s-meter { display: block; height: 14px; min-width: 3px; border-radius: 3px;
+           background: linear-gradient(90deg, var(--deck-blue) 0 var(--v, 0%), #e3e9f1 var(--v, 0%) 100%); }
+.s-meter.soft { background: linear-gradient(90deg, #9db1c9 0 var(--v, 0%), #e3e9f1 var(--v, 0%) 100%); }
+.s-meter--tall { height: 20px; }

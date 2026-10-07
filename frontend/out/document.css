@@ -1,0 +1,181 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   document.css — the component layer for STANDALONE agent documents.
+
+   A dashboard is served at `/d/<slug>` as its own page: it is not inside the app
+   shell, so `app.css` (6000 lines of `.nav`, `.rail`, modals, card walls) does not
+   apply and must not — it would drag the whole application into the frame.
+
+   What it DOES get is `theme.css`, linked by the server: the same design tokens the
+   app uses, light and dark. So this file is the one place that says what a document
+   *looks like*, and it reads every colour from a token.
+
+   ⚠️ The bug this file exists to make impossible: an agent writes
+   `background: var(--bg)` in good faith, the document has no `theme.css`, every
+   `var()` resolves to nothing, and the page renders as unstyled HTML — with the CSS
+   still sitting right there in the source looking correct. The tokens are injected,
+   so a document that uses them gets the house style for free.
+
+   ⚠️ No colour literal may appear below. A literal is a page that only ever looks
+   right in one theme, and the dark theme is half the product.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Page frame ──────────────────────────────────────────────────────────── */
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text-1);
+  font: 400 15px/1.55 var(--doc-font, -apple-system, BlinkMacSystemFont,
+        "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* One readable column. A dashboard that has to scroll sideways is a data dump, and
+   the grid below reflows down to one column long before this ever bites. */
+.kld-page { max-width: 1280px; margin: 0 auto; padding: 28px 28px 56px; }
+.kld-page.wide { max-width: 1680px; }
+
+.kld-h1 { margin: 0 0 4px; font-size: 25px; font-weight: 650; letter-spacing: -.015em; }
+.kld-sub { margin: 0 0 24px; color: var(--text-3); font-size: 14px; }
+.kld-foot { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--border);
+            color: var(--text-3); font-size: 12px; }
+.kld-note { color: var(--text-3); font-size: 12.5px; margin: 8px 0 0; }
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+.kld-grid { display: grid; gap: 16px; grid-template-columns: repeat(12, 1fr); }
+.kld-grid + .kld-grid, .kld-card + .kld-grid, .kld-grid + .kld-card { margin-top: 16px; }
+.kld-c3  { grid-column: span 3; }  .kld-c4  { grid-column: span 4; }
+.kld-c6  { grid-column: span 6; }  .kld-c8  { grid-column: span 8; }
+.kld-c12 { grid-column: span 12; }
+.kld-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.kld-row.between { justify-content: space-between; }
+.kld-spacer { flex: 1 1 auto; }
+
+/* ── Card ────────────────────────────────────────────────────────────────── */
+.kld-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-1);
+  min-width: 0;                 /* a grid child must not blow out its track */
+}
+.kld-card.flush { padding: 0; overflow: hidden; }
+.kld-card-hd {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  margin: -2px 0 14px;
+}
+.kld-card-hd h2, .kld-card-hd h3 { margin: 0; font-size: 14px; font-weight: 650; }
+.kld-card-hd .kld-muted { font-size: 12px; color: var(--text-3); }
+
+/* ── KPI tile ────────────────────────────────────────────────────────────── */
+.kld-kpi { display: flex; flex-direction: column; gap: 2px; }
+.kld-kpi .lbl { font-size: 12px; color: var(--text-3); }
+.kld-kpi .val {
+  font-size: 30px; font-weight: 650; line-height: 1.15; letter-spacing: -.02em;
+  /* The number is the loudest thing on the card, so it must never wrap mid-figure
+     on a narrow column — 856.6K breaking across two lines reads as two numbers. */
+  white-space: nowrap;
+}
+.kld-kpi .val.sm { font-size: 22px; }
+.kld-kpi .dlt { font-size: 12.5px; color: var(--text-3); }
+.kld-up   { color: var(--ok); }
+.kld-down { color: var(--danger); }
+.kld-flat { color: var(--text-3); }
+
+/* ── Table ───────────────────────────────────────────────────────────────── */
+.kld-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.kld-table th {
+  text-align: left; font-weight: 600; color: var(--text-3);
+  font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase;
+  padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.kld-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+.kld-table tbody tr:last-child td { border-bottom: 0; }
+.kld-table tbody tr:nth-child(even) { background: var(--surface-2); }
+.kld-table td.num, .kld-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.kld-table .rowhead { font-weight: 600; }
+/* A total row is a different KIND of row, not a bolder one. */
+.kld-table tfoot td {
+  font-weight: 650; background: var(--surface-3); border-top: 1px solid var(--border-strong);
+  border-bottom: 0;
+}
+
+/* ── Chip ────────────────────────────────────────────────────────────────── */
+.kld-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 9px; border-radius: var(--r-pill);
+  font-size: 11.5px; font-weight: 600; line-height: 1.7;
+  background: var(--surface-3); color: var(--text-2); border: 1px solid var(--border);
+}
+.kld-chip.ok     { background: var(--ok-soft);     color: var(--ok);     border-color: var(--ok-border); }
+.kld-chip.warn   { background: var(--warn-soft);   color: var(--warn);   border-color: var(--warn-border); }
+.kld-chip.danger { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-border); }
+.kld-chip.info   { background: var(--info-soft);   color: var(--info);   border-color: var(--info-border); }
+.kld-chip.accent { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-border); }
+
+/* ── Horizontal bar meter ───────────────────────────────────────────────────
+   A bar chart with no JavaScript and no SVG: one track per row, one filled div.
+   It is the cheapest honest way to rank 3–12 categories and it reflows, prints and
+   translates for free. Anything more elaborate belongs in `document.js`. */
+.kld-bars { display: flex; flex-direction: column; gap: 9px; }
+.kld-bar-row { display: grid; grid-template-columns: 108px 1fr auto; align-items: center; gap: 10px; }
+.kld-bar-row .name { font-size: 12.5px; color: var(--text-2); overflow: hidden;
+                     text-overflow: ellipsis; white-space: nowrap; }
+.kld-bar-row .val { font-size: 12.5px; font-weight: 600; min-width: 64px; text-align: right; }
+.kld-track { height: 9px; border-radius: var(--r-pill); background: var(--surface-3); overflow: hidden; }
+.kld-fill { height: 100%; border-radius: var(--r-pill); background: var(--c1); }
+.kld-fill.c2 { background: var(--c2); } .kld-fill.c3 { background: var(--c3); }
+.kld-fill.c4 { background: var(--c4); } .kld-fill.c5 { background: var(--c5); }
+.kld-fill.c6 { background: var(--c6); }
+.kld-fill.neg { background: var(--danger); }
+
+/* A signed bar: grows left and right from a centre line. For "who is down" — the
+   question a single --c1 scale cannot answer, because the sign IS the information. */
+.kld-sbars { display: flex; flex-direction: column; gap: 9px; }
+.kld-sbar-row { display: grid; grid-template-columns: 108px 1fr 64px; align-items: center; gap: 10px; }
+.kld-sbar { position: relative; height: 9px; background: var(--surface-3); border-radius: var(--r-pill); }
+.kld-sbar::before { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px;
+                    width: 1px; background: var(--border-strong); }
+.kld-sbar i { position: absolute; top: 0; height: 100%; border-radius: var(--r-pill); }
+.kld-sbar i.pos { background: var(--ok); }
+.kld-sbar i.neg { background: var(--danger); }
+
+/* ── Donut / legend (filled by `document.js`) ────────────────────────────── */
+.kld-donut-wrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.kld-donut { width: 132px; height: 132px; flex: 0 0 auto; }
+.kld-legend { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; min-width: 0; }
+.kld-legend .it { display: flex; align-items: center; gap: 7px; }
+.kld-legend .sw { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto; }
+.kld-legend .nm { color: var(--text-2); }
+.kld-legend .vv { margin-left: auto; font-weight: 600; }
+
+/* ── Sparkline (SVG, filled by `document.js`) ────────────────────────────── */
+.kld-spark { display: block; width: 100%; height: 46px; overflow: visible; }
+
+/* ── Misc ────────────────────────────────────────────────────────────────── */
+.kld-muted { color: var(--text-3); }
+.kld-strong { font-weight: 650; }
+.kld-right { text-align: right; }
+.kld-empty {
+  padding: 26px; text-align: center; color: var(--text-3); font-size: 13px;
+  border: 1px dashed var(--border-strong); border-radius: var(--r-md);
+}
+.kld-skel { color: var(--text-3); font-size: 12.5px; padding: 10px 0; }
+
+/* ── Narrow screens ──────────────────────────────────────────────────────────
+   The 12-column grid collapses to one column, and the tile's big number shrinks —
+   a 30px figure with `white-space: nowrap` is how a KPI overflows a phone. */
+@media (max-width: 900px) {
+  .kld-page { padding: 20px 16px 44px; }
+  .kld-grid > * { grid-column: span 12 !important; }
+  .kld-kpi .val { font-size: 24px; }
+  .kld-bar-row, .kld-sbar-row { grid-template-columns: 84px 1fr auto; }
+}
+
+@media print {
+  body { background: var(--surface); }
+  .kld-card { box-shadow: none; break-inside: avoid; }
+}

@@ -1,0 +1,698 @@
+/* Klado admin console — component and page layer.
+ *
+ * ⚠️ NO COLOUR LITERALS IN THIS FILE. Everything is `var(--token)`, and `theme.css` is
+ * the only place a value is allowed. The reason is not style: a literal here is a rule
+ * that works in one theme and not the other, and the way it fails is silence — the page
+ * still renders, `getComputedStyle` still returns the colour you wrote, and the defect
+ * only appears when somebody switches the theme.
+ *
+ * Layout: a fixed left rail plus a scrolling work area. Not cards-on-a-background, not a
+ * floating panel — an operator console is a tool, and the main app's own `settings/admin`
+ * is a page inside a workspace. This is a different program and it is allowed to feel
+ * like one.
+ */
+
+/* ── reset ────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-1);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, h4, p, figure { margin: 0; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+[hidden] { display: none !important; }
+
+/* ── shared primitives ────────────────────────────────────────────────────── */
+.kd-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-1);
+}
+.kd-card-hd {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  border-bottom: 1px solid var(--border);
+}
+.kd-card-hd h2 { font-size: 15px; font-weight: 600; }
+.kd-card-hd .kd-sub { font-size: 12px; color: var(--text-3); font-weight: 400; }
+.kd-card-hd .kd-grow { flex: 1; }
+.kd-card-bd { padding: var(--sp-5); }
+.kd-card-bd.tight { padding: 0; }
+
+.kd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 7px 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text-1);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .12s ease, border-color .12s ease;
+}
+.kd-btn:hover:not(:disabled) { background: var(--hover); }
+.kd-btn:active:not(:disabled) { background: var(--active); }
+.kd-btn:disabled { opacity: .45; cursor: not-allowed; }
+.kd-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.kd-btn.primary {
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--text-on-accent);
+}
+.kd-btn.primary:hover:not(:disabled) { background: var(--accent-hover); }
+.kd-btn.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--text-on-ink);
+}
+.kd-btn.danger:hover:not(:disabled) { filter: brightness(1.08); }
+.kd-btn.ghost { border-color: transparent; background: transparent; }
+.kd-btn.ghost:hover:not(:disabled) { background: var(--hover); }
+.kd-btn.sm { padding: 4px 9px; font-size: 12.5px; }
+
+.kd-input, .kd-select, .kd-textarea {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.kd-input:focus, .kd-select:focus, .kd-textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-color: var(--accent);
+}
+.kd-textarea { min-height: 96px; resize: vertical; font-family: var(--mono); font-size: 12.5px; }
+.kd-label { display: block; font-size: 12.5px; color: var(--text-2); margin-bottom: var(--sp-1); }
+
+.kd-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  font-size: 11.5px;
+  line-height: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.kd-badge.ok     { background: var(--ok-soft);     color: var(--ok);     border-color: var(--ok-border); }
+.kd-badge.warn   { background: var(--warn-soft);   color: var(--warn);   border-color: var(--warn-border); }
+.kd-badge.danger { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-border); }
+.kd-badge.info   { background: var(--info-soft);   color: var(--info);   border-color: var(--info-border); }
+
+.kd-empty { padding: var(--sp-6); text-align: center; color: var(--text-3); }
+
+/* An agent access code, in the account's own row. The cell holds one line per code, so
+ * the group is a column with a small gap rather than a flex row that would wrap mid-badge. */
+.kd-code-cell { min-width: 260px; }
+.kd-code {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.kd-code + .kd-code { margin-top: 4px; }
+/* A revoked code is history, not a live credential: it recedes so the eye lands on what
+ * still works. `opacity` alone would also fade the delete button below it, which the
+ * operator may still need. */
+.kd-code-mark.dead { opacity: 0.65; }
+
+.kd-muted { color: var(--text-3); }
+
+/* The copy affordance is an icon because the thing it copies is 55 characters long — a
+ * text button reading "复制" beside 55 characters invites the reader to compare the two
+ * strings by eye, which is the exact mistake the mask exists to prevent. */
+.kd-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: pointer;
+  vertical-align: middle;
+}
+.kd-iconbtn:hover:not(:disabled) { background: var(--hover); color: var(--text-1); }
+.kd-iconbtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* A note under a table, carrying what the column means. Not `kd-note`: that is a bordered
+ * callout used inside a card body, and here it would read as an alert. */
+.kd-card-ft {
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.kd-note {
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--warn-border);
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-radius: var(--r-md);
+  font-size: 12.5px;
+}
+.kd-note.info { border-color: var(--info-border); background: var(--info-soft); color: var(--info); }
+
+/* ── rows, not cards ────────────────────────────────────────────────────────
+ * ⚠️ A list is rows. Each row carries a bottom border and nothing else — no radius, no
+ * shadow, no hover lift. Cards in a list make every row look clickable when only some
+ * are, and the eye stops finding the one row that is selected.
+ */
+.kd-list { display: block; }
+.kd-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 10px var(--sp-5);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.kd-row:last-child { border-bottom: 0; }
+.kd-row:hover { background: var(--surface-2); }
+.kd-row.selected {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent-fill);
+}
+.kd-row .kd-grow { flex: 1; min-width: 0; }
+.kd-row .kd-title { font-weight: 600; }
+.kd-row .kd-meta { font-size: 12px; color: var(--text-3); }
+.kd-row .kd-actions { display: flex; gap: var(--sp-2); flex-shrink: 0; }
+
+/* ── the shell ────────────────────────────────────────────────────────────── */
+.kd-shell { display: grid; grid-template-columns: var(--nav-w) 1fr; min-height: 100vh; }
+
+.kd-rail {
+  background: var(--ink);
+  color: var(--text-inv);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.kd-rail-hd {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: var(--topbar-h);
+  padding: 0 var(--sp-4);
+  border-bottom: 1px solid var(--ink-soft);
+  font-weight: 600;
+  letter-spacing: .2px;
+}
+.kd-rail-hd .kd-mark {
+  width: 22px; height: 22px; border-radius: var(--r-sm);
+  background: var(--accent-fill);
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 700; color: var(--text-on-accent);
+}
+.kd-rail nav { padding: var(--sp-3) var(--sp-2); display: flex; flex-direction: column; gap: 2px; }
+.kd-rail nav button {
+  display: flex; align-items: center; gap: var(--sp-3);
+  width: 100%;
+  padding: 8px var(--sp-3);
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-inv);
+  text-align: left;
+  cursor: pointer;
+  opacity: .78;
+}
+.kd-rail nav button:hover { background: var(--ink-soft); opacity: 1; }
+.kd-rail nav button.on { background: var(--accent-fill); color: var(--text-on-accent); opacity: 1; }
+.kd-rail nav button .kd-count {
+  margin-left: auto;
+  min-width: 20px; padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--danger);
+  color: var(--text-on-ink);
+  font-size: 11px; line-height: 18px; text-align: center;
+}
+.kd-rail nav button.on .kd-count { background: var(--text-on-accent); color: var(--accent-fill); }
+.kd-rail-ft {
+  margin-top: auto;
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--ink-soft);
+  font-size: 12px;
+  opacity: .75;
+  /* ⚠️ `word-break: break-all` was here and it broke an email address in the MIDDLE of a
+   * word — `console-shot-…@klado` / `o-verify.invalid` across two lines. An address is one
+   * long token, so breaking-all and breaking-anywhere look identical for it; the fix is to
+   * not wrap at all. One line, ellipsis, and the full value in the `title` attribute. The
+   * screenshot script asserts the footer's height, because "did the address wrap" is a
+   * geometry fact and eyeballing it is how it shipped in the first place. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.kd-main { display: flex; flex-direction: column; min-width: 0; }
+.kd-topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: var(--sp-3);
+  height: var(--topbar-h);
+  /* ⚠️ `flex: none` — a header with a declared height must not be squeezed. It only
+   * showed up once the reader pages made `.kd-main` exactly viewport-tall: the column
+   * became over-constrained and the topbar shrank to 30px while its own rule still said
+   * 52px. The other pages never hit it because their column was content-sized, which is
+   * what made it look like a bug I had introduced rather than one that was always there. */
+  flex: none;
+  padding: 0 var(--sp-5);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.kd-topbar h1 { font-size: 16px; font-weight: 600; }
+.kd-topbar .kd-sub { font-size: 12px; color: var(--text-3); }
+.kd-topbar .kd-grow { flex: 1; }
+.kd-body { padding: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-4); }
+
+/* ── stat tiles ───────────────────────────────────────────────────────────── */
+.kd-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: var(--sp-3); }
+.kd-stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-4);
+}
+.kd-stat .kd-num { font-size: 26px; font-weight: 600; line-height: 1.15; }
+.kd-stat .kd-cap { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.kd-stat.alert { border-color: var(--warn-border); background: var(--warn-soft); }
+.kd-stat.alert .kd-num { color: var(--warn); }
+
+/* ── tables ───────────────────────────────────────────────────────────────── */
+.kd-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.kd-table th {
+  text-align: left; font-weight: 600; font-size: 12px; color: var(--text-3);
+  padding: 9px var(--sp-5);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  white-space: nowrap;
+}
+.kd-table td {
+  padding: 9px var(--sp-5);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.kd-table tr:last-child td { border-bottom: 0; }
+.kd-table tr:hover td { background: var(--surface-2); }
+.kd-table .kd-num { text-align: right; font-variant-numeric: tabular-nums; }
+.kd-mono { font-family: var(--mono); font-size: 12.5px; }
+
+/* ── the scope selector: the two dials, side by side ──────────────────────── */
+.kd-scopes { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); }
+.kd-presets { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.kd-preset {
+  padding: 5px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  cursor: pointer;
+}
+.kd-preset.on { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--text-on-accent); }
+
+/* ── module matrix ────────────────────────────────────────────────────────── */
+.kd-matrix { display: grid; grid-template-columns: repeat(auto-fit, minmax(232px, 1fr)); gap: var(--sp-3); }
+.kd-mod {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
+  background: var(--surface);
+  display: flex; align-items: center; gap: var(--sp-3);
+}
+.kd-mod .kd-grow { flex: 1; min-width: 0; }
+.kd-mod .kd-title { font-weight: 600; }
+.kd-mod .kd-meta { font-size: 12px; color: var(--text-3); }
+/* A switch that is ON is the accent FILL, because it carries a white glyph. */
+.kd-switch {
+  width: 38px; height: 22px; flex-shrink: 0;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-3);
+  position: relative; cursor: pointer; padding: 0;
+}
+.kd-switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  transition: transform .12s ease;
+}
+.kd-switch[aria-checked="true"] { background: var(--accent-fill); border-color: var(--accent-fill); }
+.kd-switch[aria-checked="true"]::after { transform: translateX(16px); border-color: var(--accent-fill); }
+.kd-switch:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ── the drawer ───────────────────────────────────────────────────────────── */
+.kd-scrim {
+  position: fixed; inset: 0; z-index: 9000;
+  background: var(--overlay);
+}
+.kd-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 9100;
+  width: min(640px, 94vw);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-3);
+  display: flex; flex-direction: column;
+}
+.kd-drawer-hd {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  border-bottom: 1px solid var(--border);
+}
+.kd-drawer-hd h2 { font-size: 15px; font-weight: 600; flex: 1; }
+.kd-drawer-bd { padding: var(--sp-5); overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-4); }
+.kd-drawer-ft {
+  padding: var(--sp-3) var(--sp-5);
+  border-top: 1px solid var(--border);
+  display: flex; gap: var(--sp-2); justify-content: flex-end;
+}
+.kd-field { display: flex; flex-direction: column; gap: var(--sp-1); }
+.kd-field .kd-help { font-size: 12px; color: var(--text-3); }
+
+/* ── dialog ─────────────────────────────────────────────────────────────────
+ * Mirrors the main app's `kldDialog` contract, reimplemented rather than imported:
+ * Esc / scrim / Cancel = cancel, Enter = confirm, and the markup lives OUTSIDE every
+ * page container — a dialog nested in a `display:none` page does not open when you are
+ * on a different page, which is the bug the main app's version was written to avoid.
+ */
+.kd-modal-scrim {
+  position: fixed; inset: 0; z-index: 9700;
+  background: var(--overlay);
+  display: grid; place-items: center;
+  padding: var(--sp-4);
+}
+.kd-modal {
+  width: min(520px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-3);
+  display: flex; flex-direction: column;
+  max-height: 88vh;
+}
+.kd-modal-hd { padding: var(--sp-4) var(--sp-5) var(--sp-2); font-size: 15px; font-weight: 600; }
+.kd-modal-bd { padding: 0 var(--sp-5) var(--sp-4); color: var(--text-2); overflow-y: auto; }
+.kd-modal-ft {
+  padding: var(--sp-3) var(--sp-5);
+  border-top: 1px solid var(--border);
+  display: flex; gap: var(--sp-2); justify-content: flex-end;
+}
+
+/* ── toasts ───────────────────────────────────────────────────────────────── */
+.kd-toasts {
+  position: fixed; right: var(--sp-4); bottom: var(--sp-4); z-index: 9800;
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  max-width: 380px;
+}
+.kd-toast {
+  padding: 10px var(--sp-4);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+  font-size: 13px;
+}
+.kd-toast.ok { border-color: var(--ok-border); background: var(--ok-soft); color: var(--ok); }
+.kd-toast.err { border-color: var(--danger-border); background: var(--danger-soft); color: var(--danger); }
+
+/* ── sign-in ──────────────────────────────────────────────────────────────── */
+.kd-login { min-height: 100vh; display: grid; place-items: center; padding: var(--sp-5); }
+.kd-login-card { width: min(400px, 100%); }
+.kd-login-card .kd-card-bd { display: flex; flex-direction: column; gap: var(--sp-3); }
+.kd-brandline { text-align: center; margin-bottom: var(--sp-4); }
+.kd-brandline .kd-name { font-size: 19px; font-weight: 700; }
+.kd-brandline .kd-tag { font-size: 12.5px; color: var(--text-3); }
+
+/* ── read-only banner ─────────────────────────────────────────────────────── */
+.kd-banner {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  background: var(--warn-soft);
+  border-bottom: 1px solid var(--warn-border);
+  color: var(--warn);
+  font-size: 13px;
+}
+.kd-banner .kd-grow { flex: 1; }
+
+/* ── login throttle notice ────────────────────────────────────────────────── */
+.kd-throttle { min-height: 100vh; display: grid; place-items: center; padding: var(--sp-5); }
+.kd-throttle-card { width: min(460px, 100%); text-align: center; }
+
+/* ── project manual (the agent's instruction set) ───────────────────────────
+ * The layout is the main app's Knowledge base page, rebuilt on this console's tokens:
+ * a toolbar of filter chips, then a list on the left and the document on the right.
+ *
+ * ⚠️ Colours are tokens only, never literals. `theme.css` is the single place a colour
+ * is defined, and a `#hex` here would work in one theme and be wrong in the other — the
+ * console has a dark theme and a `data-theme` toggle, so that is a live defect, not a
+ * hypothetical one. The `kk-` prefix is checked against the rest of the file rather than
+ * assumed: a second `.kk-render` rule later in this file would silently win, exactly as
+ * the duplicate `.dc-dataset-footer` did in the main app's `app.css`. */
+.kk-bar {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+.kk-bar-hd {
+  display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.kk-tabs { display: flex; gap: var(--sp-1); }
+.kk-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border: 1px solid transparent; border-radius: 7px;
+  background: transparent; color: var(--text-2);
+  font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.kk-tab:hover { background: var(--hover); color: var(--text-1); }
+.kk-tab.on {
+  background: var(--surface); color: var(--text-1);
+  border-color: var(--border); box-shadow: var(--shadow-1);
+}
+.kk-tab .kk-n {
+  font-size: 11px; font-variant-numeric: tabular-nums;
+  padding: 1px 6px; border-radius: 999px;
+  background: var(--surface-3); color: var(--text-3);
+}
+.kk-tab.on .kk-n { background: var(--accent-soft); color: var(--accent); }
+.kk-scope { display: flex; gap: var(--sp-1); flex-wrap: wrap; }
+.kk-chip {
+  padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface); color: var(--text-2);
+  font-size: 12px; cursor: pointer;
+}
+.kk-chip:hover { background: var(--hover); }
+.kk-chip.on { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--text-on-accent); }
+.kk-search { width: 240px; margin-left: auto; }
+
+/* The two panes. `min-height: 0` on the scroller is what lets it actually scroll: a
+ * flex/grid child defaults to `min-height: auto`, so without it the pane grows to fit
+ * its content and the page — not the pane — scrolls. */
+.kk-split { display: grid; grid-template-columns: minmax(260px, 340px) 1fr; }
+.kk-list {
+  max-height: 62vh; overflow-y: auto;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+.kk-main { max-height: 62vh; overflow-y: auto; padding: var(--sp-5); min-width: 0; }
+.kk-item {
+  display: flex; flex-direction: column; gap: 3px; width: 100%;
+  padding: 10px var(--sp-4); border: 0; border-bottom: 1px solid var(--border);
+  border-left: 3px solid transparent;
+  background: transparent; text-align: left; cursor: pointer;
+}
+.kk-item:hover { background: var(--surface-2); }
+.kk-item.on { background: var(--accent-soft); border-left-color: var(--accent-fill); }
+.kk-item-hd { display: flex; align-items: center; gap: var(--sp-2); }
+.kk-item-t {
+  font-size: 13px; font-weight: 600; color: var(--text-1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;
+}
+.kk-item-s {
+  font-size: 12px; color: var(--text-2); line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.kk-item-m { font-size: 11.5px; color: var(--text-3); }
+
+.kk-doc { max-width: none; }
+.kk-doc-head { margin-bottom: var(--sp-4); }
+.kk-doc-title { font-size: 19px; font-weight: 600; line-height: 1.35; color: var(--text-1); }
+.kk-doc-meta {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin-top: 6px; font-size: 12px; color: var(--text-3);
+}
+.kk-doc-meta code { font-family: var(--mono); font-size: 11.5px; }
+.kk-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: var(--sp-4); }
+
+.kk-empty { padding: var(--sp-6) var(--sp-4); text-align: center; color: var(--text-3); }
+.kk-empty-t { font-size: 14px; color: var(--text-2); margin-bottom: 6px; }
+.kk-empty-s { font-size: 12.5px; line-height: 1.7; }
+
+/* The rendered page. Scoped under `.kk-render` so none of it can leak into the console's
+ * own chrome — `h1` and `table` are styled by the main app's reader, and an unscoped
+ * version here would restyle the login card and the sign-in button too. */
+/* ⚠️ The measure belongs on the **text blocks**, not on the container.
+ *
+ * Two attempts got this wrong before the third:
+ *  1. `max-width: 78ch` on `.kk-doc` — a reading measure applied to a 2 525px source file.
+ *  2. moving it to `.kk-render` — which fixed the source box and then squeezed the
+ *     **tables and code blocks** with it. Measured on `api_endpoints.md`: 13 tables, five
+ *     of them clipped by 41 / 89 / 162px, four code blocks, three clipped by up to 159px —
+ *     while at a 1920px window the right pane offered 1 274px and the document used 585.
+ *     A spec document that silently drops the rightmost column of an endpoint table is a
+ *     spec document that is wrong, so that is the defect this fixes.
+ *
+ * So: running prose keeps a comfortable line length, and data — tables, code, rules —
+ * uses the width it is given. */
+.kk-render { font-size: 13.5px; line-height: 1.75; color: var(--text-1); }
+.kk-render > p,
+.kk-render > ul,
+.kk-render > ol,
+.kk-render > blockquote,
+.kk-render > h1, .kk-render > h2, .kk-render > h3,
+.kk-render > h4, .kk-render > h5, .kk-render > h6 { max-width: 78ch; }
+.kk-render h1, .kk-render h2, .kk-render h3,
+.kk-render h4, .kk-render h5, .kk-render h6 {
+  font-weight: 600; line-height: 1.35; color: var(--text-1);
+  margin: var(--sp-5) 0 var(--sp-2);
+}
+.kk-render h1 { font-size: 17px; }
+.kk-render h2 { font-size: 15.5px; }
+.kk-render h3 { font-size: 14px; }
+.kk-render > :first-child { margin-top: 0; }
+.kk-render p { margin: 0 0 var(--sp-3); }
+.kk-render ul, .kk-render ol { margin: 0 0 var(--sp-3); padding-left: 1.4em; }
+.kk-render li { margin-bottom: 3px; }
+.kk-render blockquote {
+  margin: 0 0 var(--sp-3); padding: var(--sp-2) var(--sp-4);
+  border-left: 3px solid var(--border-strong); color: var(--text-2);
+}
+.kk-render code {
+  font-family: var(--mono); font-size: 12px;
+  background: var(--surface-3); padding: 1px 5px; border-radius: 4px;
+}
+.kk-render pre {
+  margin: 0 0 var(--sp-3); padding: var(--sp-3) var(--sp-4);
+  background: var(--surface-3); border: 1px solid var(--border);
+  border-radius: 8px; overflow-x: auto;
+}
+.kk-render pre code { background: none; padding: 0; }
+.kk-render a { color: var(--accent); text-decoration: underline; }
+.kk-render hr { border: 0; border-top: 1px solid var(--border); margin: var(--sp-4) 0; }
+/* A table wider than its column cannot shrink, so the choice is scroll or hide. The
+ * scroller is the WRAPPER (`kkMarkdown` emits it), not the table: a `display: block` +
+ * `overflow-x: auto` table scrolls itself, and putting both in gives two scrollbars for
+ * one piece of content. `width: 100%` is the *preferred* width — a table whose min-content
+ * width is larger still overflows, and the wrapper catches it. */
+.kk-tablewrap { overflow-x: auto; margin: 0 0 var(--sp-3); }
+.kk-render table {
+  width: 100%; border-collapse: collapse; font-size: 12.5px;
+}
+.kk-render th, .kk-render td {
+  border: 1px solid var(--border); padding: 6px 9px; text-align: left; vertical-align: top;
+}
+.kk-render th { background: var(--surface-2); font-weight: 600; }
+.kk-render del { color: var(--text-3); }
+
+/* A file shown as source rather than as prose. The four dashboard references are working
+ * HTML pages and a Python publisher script; rendering them through the markdown renderer
+ * would show the operator a document that is not the thing they are shipping.
+ * ⚠️ `white-space: pre` with `overflow-x: auto`, because these files have long lines and
+ * a source viewer that wraps them is no longer showing the file. */
+.kk-src {
+  margin: 0; padding: var(--sp-4);
+  max-height: 48vh; overflow: auto; white-space: pre;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font-family: var(--mono); font-size: 12px; line-height: 1.6;
+  color: var(--text-1);
+}
+/* SKILL.md's `description:` is one very long line and decides when the agent loads the
+ * package, so it is the one field on this page that has to be readable in full. */
+.kk-fm-desc { display: block; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+.kk-note { color: var(--text-3); font-size: 12.5px; line-height: 1.7; margin-bottom: var(--sp-4); }
+.kk-note code { font-family: var(--mono); font-size: 11.5px; }
+
+@media (max-width: 1080px) {
+  /* One column, and the list stops being a tall scroller: side by side there is no room
+   * for both, and two independently-scrolling panes on a narrow window is worse than one
+   * page that scrolls. */
+  .kk-split { grid-template-columns: 1fr; }
+  .kk-list { max-height: 34vh; border-right: 0; border-bottom: 1px solid var(--border); }
+  .kk-search { width: 100%; margin-left: 0; }
+}
+
+/* ── reader pages fill the window ─────────────────────────────────────────────
+ * ⚠️ **After** the media query on purpose: the 1080px rule sets `.kk-list`'s max-height at
+ * the same specificity, and a block placed above it would lose — which is how the narrow
+ * layout would quietly stop working while every screenshot still looked fine.
+ *
+ * The panes used to be `max-height: 62vh`, measured 2026-10-03: on a 900px window that
+ * left **178px of empty page below the panes**, and 346px on a 1200px one — the bigger
+ * the screen, the more of it was wasted. A viewport-relative cap is the wrong tool: what
+ * is actually wanted is "the rest of the window", which is a flex chain, not a
+ * percentage. So the height is handed down from `.kd-shell` instead of computed.
+ *
+ * Scoped by a class `go()` toggles, because only these two pages have panes that scroll
+ * on their own. The other nine pages keep scrolling the window, which is what they were
+ * built to do. */
+.kd-shell--fill { height: 100vh; }
+/* ⚠️ `min-height: 0` on the grid item, and it is the whole fix. A grid item's automatic
+ * minimum size is its content, so `.kd-main` refused to shrink below the 2 853px the
+ * panes wanted and pushed the shell to 2 965px — measured, and it looked like the height
+ * change had done nothing at all. Same reason as the `min-height: 0` further down. */
+.kd-shell--fill > .kd-main { min-height: 0; }
+.kd-shell--fill .kd-body { flex: 1 1 auto; min-height: 0; }
+
+/* `:not([hidden])` rather than a blanket rule: these sections are toggled with the
+ * `hidden` attribute, and a `display` in an author rule beats the UA's `[hidden]`
+ * display:none — so a selector that did not exclude the hidden ones would put every
+ * page on screen at once. */
+.kd-shell--fill #page-manual:not([hidden]),
+.kd-shell--fill #page-skill:not([hidden]) {
+  display: flex; flex-direction: column; min-height: 0;
+}
+.kd-shell--fill .kk-bar { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+/* `minmax(0, 1fr)` rather than an implicit `auto` row: the panes are grid items, and an
+ * auto row is sized by their content — which is to say by the file being read. */
+.kd-shell--fill .kk-split { flex: 1 1 auto; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+.kd-shell--fill .kk-list { max-height: none; min-height: 0; height: 100%; }
+.kd-shell--fill .kk-main { max-height: none; min-height: 0; height: 100%; }
+/* The source box stops capping itself: the pane scrolls, and a 48vh box inside a
+ * 740px pane would just add a second scrollbar for no reason. */
+.kd-shell--fill .kk-src { max-height: none; }
+
+/* Narrow windows keep the stacked layout, and the whole window is still used. */
+@media (max-width: 1080px) {
+  .kd-shell--fill .kk-list { height: 34vh; }
+  .kd-shell--fill .kk-main { height: auto; flex: 1 1 auto; }
+}

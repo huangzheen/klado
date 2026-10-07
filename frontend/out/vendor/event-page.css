@@ -1,0 +1,320 @@
+/* ============================================================================
+   Event page template — the 16:9 page a calendar event opens to.
+
+   WHY THIS FILE EXISTS
+   --------------------
+   Every event page used to be free-form: each author invented their own grid, so
+   the same five things (summary / to-do / partners / deadline / attachments)
+   landed in different places on every event — and a two-line summary pushed the
+   side cards down while a one-line summary did not, so two events side by side
+   never lined up. The user's words: "你可以设计一个模版，把所有的元素固定位置显示".
+
+   THE CONTRACT
+   ------------
+   Markup lives in `klado-v2:format-calendar-event` §3. Two rules:
+
+   1. **Every box has a fixed height.** A long title, a long description or a
+      long attachment list truncates inside its box; it never moves anything else.
+      Nothing in this file depends on how much text an author wrote.
+   2. **The data-driven boxes are filled by the server** from the event's own
+      fields: `<div data-ev="schedule"></div>` and friends. They must be EMPTY in
+      the authored page — see `services/ai/calendar_page.py`. That is what makes
+      the attachments real LINKS (built from the attachment references, with the
+      mount point resolved) and keeps the page from disagreeing with the event.
+
+   This file is injected by the server, last, so it wins over an author's own CSS —
+   exactly like the deck runtime (see report-deck.css). Do not link it by hand.
+
+   ── the look (rewritten 2026-09-30, second pass) ─────────────────────────────
+   The user: "没有层次感，让人找不到重点… AI 味太重，与我项目的设计也有一些差异".
+   So this is now an editorial BRIEF, not a dashboard:
+
+   * **One reading order**, stated in the type scale: the title (44px, the only
+     thing that size) → the work (the to-do list) → the facts (right column).
+   * **Nothing competes with the title.** The description used to be a filled
+     blue rounded box — the only saturated block on the page, so the eye went
+     there first. It is now a LEAD: a text block with a single accent rule and no
+     fill, which reads as an introduction instead of as an alert.
+   * **No boxes.** The three "cards" were three filled rounded rectangles; they are
+     now spec entries separated by hairlines (label above value), which is how a
+     brief lists its facts. A hairline and one accent colour carry the structure.
+   * **Tabular numerals** everywhere a date or a count appears, so columns of
+     dates line up on the digit.
+   * Palette: the app's own (`--deck-*` mirrors `--text-1/2/3`, `--border`,
+     `--accent`), one accent used sparingly, Roboto Condensed (the deck's font).
+   ============================================================================ */
+
+/* ── the page frame ──────────────────────────────────────────────────────────
+   `.deck .slide` already gives 1920x1080 with 76/92/100 padding; this template
+   only arranges what is inside that box. Rows are fixed, so the columns below
+   always start at the same y on every event page. */
+.ev-page {
+  /* ⚠️ NOT a grid: `.deck .slide` is (0,2,0) and sets `display: flex;
+     flex-direction: column; gap: 24px`, which out-ranks anything (0,1,0) written here —
+     so a `grid-template-rows` on this element silently never applies. The rows are flex
+     children in order — head, title (out of flow, see below), columns — and `.ev-cols`
+     claims what is left with `flex: 1`. */
+  height: 100%;
+  min-height: 0;
+  /* The title is absolutely positioned into the head band, so this is its containing block:
+     `.slide` already carries the 76/92/100 padding, so the padding-box origin IS the head's
+     top-left corner. */
+  position: relative;
+}
+
+/* ── head: the page TITLE on the left, the schedule on the right ──────────────
+   One line, and the strongest rule on the page: this is the page's own name, and the
+   reader should never have to look for it. */
+.ev-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 24px;
+  /* ⚠️ `flex: 0 0 auto` — this band is the TITLE's box, so it must not be shrunk. As a plain
+     flex child it shrinks proportionally whenever the columns' intrinsic height overflows the
+     page (measured: 66px → 64.5, which made the title taller than the band it sits in and
+     poke below the divider). The columns take the slack: `.ev-cols` has `flex: 1; min-height: 0`. */
+  flex: 0 0 auto;
+  position: relative;
+  height: 78px;
+  border-bottom: 2px solid var(--deck-ink);
+}
+/* The accent tab: 96px of brand blue on the left of that rule. The only place the accent
+   appears at full strength, which is what makes it read as a mark rather than decoration. */
+.ev-head::after {
+  content: "";
+  position: absolute;
+  left: 0; bottom: -2px;
+  width: 96px; height: 2px;
+  background: var(--deck-blue);
+}
+/* Pages published before 2026-09-30 still carry `KIND · category` in the kicker, and the
+   authored skeleton still has the span. Hiding it (rather than editing the markup) is what
+   makes the arrangement apply to every page — the promise of a template. */
+.ev-kicker { display: none; }
+.ev-when {
+  /* ⚠️ Explicit: the kicker is `display: none`, so the schedule is the head's FIRST grid
+     child and would otherwise land in the `1fr` column — stretched across the whole row. */
+  grid-column: 2;
+  justify-self: end;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--deck-mid);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+
+/* ── title: the page's own name, on the head line ─────────────────────────────
+   Absolute, because it has to share the line with the schedule and CSS cannot put a sibling
+   inside the head's grid cell. ⚠️ 76/92 IS `.slide`'s padding and must be repeated: an
+   absolutely positioned box resolves against the ancestor's PADDING box, whose origin sits
+   just inside the 1px border — the padding does not offset it, so `top: 0; left: 0` would put
+   the title outside the content area. */
+.ev-title {
+  position: absolute;
+  top: 76px;
+  left: 92px;
+  height: 78px;                             /* the head band */
+  /* The content width (`100%` is the padding box, so subtract the 92px padding twice) minus
+     room for the schedule (~300px + the gap). */
+  max-width: calc(100% - 184px - 320px);
+  display: flex;
+  align-items: center;
+  margin: 0;
+  font-size: 44px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -.005em;
+  color: var(--deck-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 项目描述：the project description, as a LEAD ─────────────────────────────
+   ⚠️ It is AUTHORED inside `.ev-main` (§3.1: it is part of "what this project is") and CSS
+   cannot reparent an element, so it is taken out of flow and pinned to the right column —
+   the user asked for the left column to be the to-do list and only that.
+
+   ⚠️ It used to be a FILLED blue rounded box, and that was the page's hierarchy problem: the
+   only saturated block on the page, so the eye landed on the introduction instead of on the
+   title. It keeps the accent but only as a rule on the left, and no background — a reader
+   now sees an introduction, not an alert. */
+.ev-desc {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: calc((100% - 56px) / 2.35);        /* exactly the right column */
+  /* Half the right column. The column is a fixed canvas — 1080 − 76 (top padding) − 100
+     (bottom) − 2 (border) − 80 (head) − 24 (flex gap) = 798, call it 800 — so half is 400.
+     ⚠️ px, not `50%`: the reserve below (`.ev-side`'s padding) cannot be a percentage (a
+     percentage PADDING resolves against the WIDTH), so the two numbers move together. */
+  height: 210px;
+  /* ⚠️ The deck runtime does not set `box-sizing: border-box` globally; without this the
+     padding adds to `height` and the box is taller than the number `.ev-side` reserves. */
+  box-sizing: border-box;
+  margin: 0;
+  overflow: hidden;
+  font-size: 24px;
+  line-height: 1.5;
+  color: var(--deck-mid);
+  border-left: 4px solid var(--deck-blue);
+  padding: 2px 0 0 26px;
+}
+.ev-desc:empty { display: none; }
+
+/* ── the two columns ────────────────────────────────────────────────────────
+   Left: the to-do list, and only that. Right: the description, then the facts. */
+.ev-cols {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: 1.24fr 1fr;
+  gap: 24px 56px;
+  min-height: 0;
+  position: relative;
+}
+
+.ev-main { min-height: 0; display: flex; flex-direction: column; }
+
+/* ── section label ──────────────────────────────────────────────────────────
+   Quiet, but not the faintest grey on the page: it has to be findable when the reader is
+   looking for a section, without competing with the values under it. The hairline under it
+   is what makes a section read as a field rather than as a floating word. */
+.ev-block-title {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--deck-mid);
+  margin: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--deck-line);
+}
+
+/* ── the to-do list: the page's body ────────────────────────────────────────
+   ⚠️ Rows are capped. They used to stretch to fill the column (`flex: 1`), which with three
+   items meant three 250px rows each carrying one line of text — the "large empty gaps" the
+   user saw. A row is now a comfortable band (max 132px) and the column may end earlier than
+   the page: a brief with margins reads better than one inflated to fill. */
+.ev-todo {
+  margin: 0; padding: 0; list-style: none;
+  flex: 1 1 auto; min-height: 0; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.ev-todo li {
+  flex: 1 1 auto;                            /* stretch, but never past the cap below */
+  min-height: 84px;
+  max-height: 160px;
+  position: relative;                       /* the tick below is positioned against the row */
+  display: flex; gap: 18px; align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--deck-line);
+}
+.ev-todo li:last-child { border-bottom: 0; }
+/* Pending: an empty box. Done: a CHECK — the earlier version filled the square solid teal, which
+   reads as a colour swatch, not as "this is done" (a reader expects a tick). Drawn in CSS so
+   the page still needs no icon font. */
+.ev-todo li::before {
+  content: ""; flex: 0 0 auto; width: 22px; height: 22px;
+  border: 2px solid var(--deck-mid); border-radius: 4px;
+}
+.ev-todo-row.is-done::before { border-color: var(--deck-teal); }
+.ev-todo-row.is-done::after {
+  content: ""; position: absolute;
+  left: 9px; top: 50%; margin-top: -8px;
+  width: 7px; height: 13px;
+  border-right: 3px solid var(--deck-teal);
+  border-bottom: 3px solid var(--deck-teal);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+/* ── one to-do row ──────────────────────────────────────────────────────────
+   Filled by the server from `event.todos`: the text, then who and by when. A to-do without
+   an owner and a date is a wish, and a `due` is what the calendar draws as a milestone. */
+.ev-todo-text { flex: 0 1 auto; max-width: 68%; min-width: 0; overflow: hidden; font-size: 25px;
+  line-height: 1.3; color: var(--deck-ink); }
+.ev-todo-meta {
+  flex: 0 0 auto;
+  display: flex; gap: 14px; align-items: baseline; margin-right: auto;
+  font-size: 18px; line-height: 1.2; color: var(--deck-soft);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.ev-todo-meta b { font-weight: 600; color: var(--deck-mid); }
+/* A finished line stays visible and stays where it is: the point is to see it is done, not to
+   make the page reflow between two looks of the same event. */
+.ev-todo-row.is-done .ev-todo-text { text-decoration: line-through; color: var(--deck-mid); }
+.ev-todo-none { color: var(--deck-soft); font-size: 24px; padding: 20px 0; }
+
+/* ── the facts: description on top, then spec entries (no boxes) ─────────────
+   ⚠️ Each entry is CONTENT-SIZED but CAPPED, and the column clips. This is the template's
+   oldest promise (§3.3: "每格都是固定框，写多了只会在框里被裁掉") and the 2026-09-30 redesign
+   nearly threw it away: with plain `min-content` rows and nothing capping them, a page with
+   12 partners + 8 attachments put the last entry **311px past the bottom of the 1080px
+   canvas** — measured — so the attachment list ran under the deck's page-number bar. The
+   look is still content-sized (a short fact is a short row); the cap only stops a long list
+   from eating the entries below it.
+   The padding on top is the description's height plus the row gap, reserved only when the
+   page actually has a description. */
+.ev-side {
+  display: grid;
+  grid-auto-rows: min-content;
+  gap: 0;
+  min-height: 0;
+  overflow: hidden;                       /* the hard backstop: never paints past the band */
+}
+.ev-cols:has(.ev-desc) > .ev-side { padding-top: 234px; }   /* 210 + 24 gap */
+/* ⚠️ NOT a card any more: three filled rounded rectangles were the "dashboard" look the user
+   objected to, and they made three small facts look like three equal widgets. A hairline on
+   top and a label/value pair is how a brief states a fact. */
+.ev-card {
+  min-height: 0;
+  /* The cap. ⚠️ It is a CONTENT-box cap (the deck runtime does not set `box-sizing`), so with
+     this element's 16+10 padding the border box tops out at 208px (215 for the first entry,
+     which carries the 22px extra). The facts band is 564px (measured: first entry top 415 →
+     column bottom 979, i.e. 1080 − 76 − 100 − 2 − 80 head − 24 gap − 234 reserved for the
+     lead) and Deadline is always one line, so even with Partners AND Attachments both capped
+     the column ends at 930 — measured with 12 partners + 8 attachments, 49px of slack. */
+  max-height: 182px;
+  display: flex; flex-direction: column;
+  gap: 8px;
+  padding: 16px 0 10px;
+  border-top: 1px solid var(--deck-line);
+  overflow: hidden;
+}
+.ev-side > .ev-card:first-child { padding-top: 22px; }
+.ev-card > .ev-block-title { flex: 0 0 auto; border-bottom: 0; padding-bottom: 0; font-size: 16px;
+  letter-spacing: .16em; color: var(--deck-mid); }
+.ev-card-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+
+/* partners: one line each, name first, address as the secondary */
+.ev-person {
+  display: flex; align-items: baseline; gap: 12px;
+  font-size: 24px; line-height: 1.34; color: var(--deck-ink);
+}
+.ev-person small { color: var(--deck-soft); font-size: 18px; }
+.ev-person::before {
+  content: ""; flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--deck-teal); align-self: center;
+}
+
+/* deadline: deliberately the loudest number on the page after the title */
+.ev-deadline { font-size: 26px; font-weight: 800; color: var(--deck-ink);
+  font-variant-numeric: tabular-nums; line-height: 1.15; letter-spacing: -.01em; }
+.ev-deadline.is-none { color: var(--deck-soft); font-weight: 600; font-size: 26px; }
+
+/* attachments: real links, always — the type tag is the quiet half */
+.ev-links { display: flex; flex-direction: column; gap: 12px; }
+.ev-link {
+  display: flex; align-items: baseline; gap: 12px;
+  font-size: 24px; line-height: 1.3; color: var(--deck-blue);
+  text-decoration: none; padding: 0; max-width: 100%;
+  border-bottom: 1px solid rgba(37, 99, 235, .22);
+  padding-bottom: 4px;
+}
+.ev-link:hover { border-bottom-color: var(--deck-blue); }
+.ev-link > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev-link > small { flex: 0 0 auto; color: var(--deck-soft); font-size: 17px;
+  text-transform: uppercase; letter-spacing: .1em; }
+.ev-empty { font-size: 25px; color: var(--deck-soft); }

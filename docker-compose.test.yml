@@ -1,0 +1,154 @@
+# Overlay for the `test` branch. It is layered ON TOP of `docker-compose.yml`,
+# never used alone:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml \
+#       build app-test
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml \
+#       up -d --no-build --force-recreate app-test admin-test
+#
+# ⚠️⚠️ It declares `name: klado` on purpose, and that is the whole point.
+#
+# Same project name ⇒ same default network ⇒ `postgres` and `minio` resolve by
+# service name. That is what "share one database service" means here: the test
+# instance talks to the SAME postgres container and the SAME object store as
+# production. It is NOT a second database server, so there is one backup, one
+# credential and one thing to keep alive.
+#
+# The reason it is not a separate `docker-compose.test.yml`-only project is that
+# a project that does not define `postgres` cannot put it in `depends_on`, and a
+# separate project cannot resolve the name at all. The overlay gets both.
+#
+# ── The three things this file must never do ──────────────────────────────────
+#
+# 1. It must never name `app` or `admin` on an `up` line. Those are production
+#    containers (`klado-app-1` / `klado-admin-1` on :8000 / :8787).
+# 2. It must never use the image tag `klado:latest`. That tag is not a build
+#    cache, it is the image the running production containers were started from
+#    — rebuilding it silently changes what the next `--force-recreate` launches,
+#    and the next production deploy would ship the test build.
+# 3. It must never publish a port on anything but the LAN address.
+#
+# ── What is actually isolated ───────────────────────────────────────────────
+#
+#   database  klado_test  (new empty database in the shared postgres container)
+#   bucket    klado-test  (new empty bucket in the shared object store)
+#
+# ⚠️ Not an accident, and worth stating why. The application CREATES AND
+# ALTERS ITS OWN TABLES AT STARTUP (`CREATE TABLE IF NOT EXISTS`,
+# `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` — see `api/routers/reports.py`).
+# Pointing a test branch at the same tables would therefore apply that branch's
+# schema changes to production the moment it started, with no down-migration and
+# no way back. Sharing the service while separating the data is what makes this
+# safe; sharing the tables would not be.
+#
+# ⚠️ The override beats the bind-mounted `.env`. `klado_shared/config.py` calls
+# `load_dotenv(..., override=False)`, so a value already in the process
+# environment wins over the file — and compose's `environment:` block is process
+# environment. The `.env` still supplies SECRET_KEY and the credentials, so a
+# signed-in session works the same way here as in production.
+
+name: klado
+
+services:
+  # One-shot, same shape as the production `minio-init` but for the test bucket.
+  # `mc mb --ignore-existing` is idempotent, so re-running is free.
+  minio-init-test:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        mc alias set klado http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
+        mc mb --ignore-existing klado/${OSS_BUCKET_NAME:-klado-test} &&
+        mc anonymous set none klado/${OSS_BUCKET_NAME:-klado-test}
+    environment:
+      MINIO_ROOT_USER: ${OSS_ACCESS_KEY_ID:?OSS_ACCESS_KEY_ID is required — fill it in .env}
+      MINIO_ROOT_PASSWORD: ${OSS_ACCESS_KEY_SECRET:?OSS_ACCESS_KEY_SECRET is required — fill it in .env}
+      OSS_BUCKET_NAME: ${KLADO_TEST_OSS_BUCKET:-klado-test}
+
+  app-test:
+    # ⚠️ `app-test` owns the build and `admin-test` only uses the tag. Same rule
+    # as the production pair, and for the same reason: two build sections under
+    # one tag is a race, and whichever build finishes last silently wins.
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${KLADO_TEST_IMAGE:-klado:test}
+    restart: unless-stopped
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    working_dir: /app/api
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${KLADO_TEST_POSTGRES_DB:-klado_test}
+      OSS_BUCKET_NAME: ${KLADO_TEST_OSS_BUCKET:-klado-test}
+    # Bound to the LAN address, not 0.0.0.0. This machine also carries an
+    # nginx-proxy-manager and a cloudflared container, and a listener on every
+    # interface is one `proxy_pass` away from being public. Override the
+    # address with KLADO_TEST_BIND if the machine's LAN address changes.
+    ports:
+      - "${KLADO_TEST_BIND:-127.0.0.1}:${KLADO_TEST_APP_PORT:-8001}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init-test:
+        condition: service_completed_successfully
+    volumes:
+      # Read-only for the same reason as production: a process bug must not be
+      # able to rewrite the credentials. The PLAYWRIGHT volume is deliberately
+      # SHARED — it holds a ~115 MB Chromium download, not application data, and
+      # sharing it means the test image never re-downloads a browser.
+      - ./.env:/app/.env:ro
+      - playwright-browsers:/root/.cache/ms-playwright
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS --max-time 3 http://127.0.0.1:8000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  admin-test:
+    # No `build:` here — see the note on `app-test`.
+    image: ${KLADO_TEST_IMAGE:-klado:test}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init-test:
+        condition: service_completed_successfully
+      app-test:
+        condition: service_started
+    restart: unless-stopped
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8787"]
+    # ⚠️ `/app/api-admin`, NOT `/app-admin`. The Dockerfile copies the console to
+    # `/app/api-admin/`, and there is no `/app-admin` in the image — Docker
+    # silently CREATES a missing working directory, so the typo produces an empty
+    # directory rather than an error, and the container then crash-loops with
+    # `Could not import module "main"` while every health check that does not
+    # cover this service still passes. The application's own `app` service uses
+    # `/app/api` for the same reason.
+    working_dir: /app/api-admin
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${KLADO_TEST_POSTGRES_DB:-klado_test}
+      OSS_BUCKET_NAME: ${KLADO_TEST_OSS_BUCKET:-klado-test}
+      # Cookies are matched on host, not port. Production's console is reached
+      # at klado.team:8787 and this one at a different hostname entirely, so
+      # they cannot collide — but a distinct name costs nothing and removes the
+      # question entirely.
+      KLADO_ADMIN_SESSION_COOKIE: ${KLADO_TEST_ADMIN_COOKIE:-klado_admin_session_test}
+    ports:
+      - "${KLADO_TEST_BIND:-127.0.0.1}:${KLADO_TEST_ADMIN_PORT:-8788}:8787"
+    volumes:
+      - ./.env:/app/.env:ro

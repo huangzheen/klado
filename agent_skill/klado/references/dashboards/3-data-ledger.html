@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>明细台账 · Data Ledger</title>
+<style>
+  /* Style C — 明细台账 / data ledger.
+     A's grid exists to make a page skimmable; this one refuses that trade. Every row
+     is a real row, the numbers stay in one column and never wrap, and the only
+     decoration is a bar drawn INSIDE the cell it describes — so the eye compares
+     lengths down a column without a separate chart competing for attention.
+     The band matrix below is the same idea pivoted: months across, bands down. */
+  .inline { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+  .inline .track { width: 84px; height: 7px; border-radius: var(--r-pill);
+                   background: var(--surface-3); overflow: hidden; flex: 0 0 auto; }
+  .inline .fill { height: 100%; background: var(--c1); border-radius: var(--r-pill); }
+  .kld-table td.num { white-space: nowrap; }
+  .matrix th:first-child, .matrix td:first-child { position: sticky; left: 0;
+    background: var(--surface); z-index: 1; }
+  .matrix tbody tr:nth-child(even) td:first-child { background: var(--surface-2); }
+  .heat { display: block; height: 20px; border-radius: 3px; }
+  .bar-note { color: var(--text-3); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="kld-page wide">
+  <h1 class="kld-h1" id="t"></h1>
+  <p class="kld-sub" id="s"></p>
+
+  <div class="kld-card flush">
+    <div style="padding:14px 18px 0" class="kld-row between">
+      <h2 style="margin:0;font-size:14px" id="h1"></h2>
+      <span class="bar-note" id="n1"></span>
+    </div>
+    <div id="ledger" style="padding:10px 18px 16px"></div>
+  </div>
+
+  <div class="kld-card" style="margin-top:16px">
+    <div class="kld-row between" style="margin-bottom:12px">
+      <h2 style="margin:0;font-size:14px" id="h2"></h2>
+      <span class="bar-note" id="n2"></span>
+    </div>
+    <div id="matrix" style="overflow-x:auto"></div>
+  </div>
+
+  <p class="kld-foot" id="foot"></p>
+</div>
+
+<script>
+(async function () {
+  const F = kld.fmt;
+  const zh = (window.kladoDashboard.lang || 'zh') !== 'en';
+  const COPY = {
+    zh: { t: '明细台账', s: '逐行数据 · 2026-01 至 2026-09',
+          h1: '区域 × 月份 · 单位数', n1: '共 45 行 · 条内条形按当月全区域合计归一',
+          h2: '价格带 × 月份 · 同比', n2: '同比在九个月内恒定，故按行着色而非画趋势',
+          foot: '数据来源：region_monthly_2026、band_monthly_2026（2026-01 至 2026-09，agent 填入的样例数据，非真实业务）。',
+          loading: '正在取数…', err: '取数失败：' },
+    en: { t: 'Data Ledger', s: 'Row by row · Jan–Sep 2026',
+          h1: 'Region × month · units', n1: '45 rows · in-cell bars are scaled to that month’s all-region total',
+          h2: 'Band × month · YoY', n2: 'YoY is constant across the nine months, so the row is shaded rather than trended',
+          foot: 'Source: region_monthly_2026, band_monthly_2026 (Jan–Sep 2026; sample data entered by the agent, not real business figures).',
+          loading: 'Loading…', err: 'Could not load: ' }
+  };
+  const c = zh ? COPY.zh : COPY.en;
+  document.documentElement.lang = zh ? 'zh' : 'en';
+  document.getElementById('t').textContent = c.t;
+  document.getElementById('s').textContent = c.s;
+  document.getElementById('h1').textContent = c.h1;
+  document.getElementById('n1').textContent = c.n1;
+  document.getElementById('h2').textContent = c.h2;
+  document.getElementById('n2').textContent = c.n2;
+  document.getElementById('foot').textContent = c.foot;
+  document.getElementById('ledger').innerHTML = '<div class="kld-skel">' + c.loading + '</div>';
+
+  let d;
+  try {
+    const [rows, bands] = await Promise.all([
+      // ⚠️ Both years come back raw and the ratio is done in JS on purpose. In
+      // Postgres a bare `a / b` on two integer columns is INTEGER division: North
+      // 2026-01 came back as 0.0 instead of −21.0, because (10989-13910)/13910
+      // truncates to 0 before anything else happens. Casting the whole expression
+      // (`round(((a-b)/b*100)::numeric,1)`) does NOT help — the division has already
+      // happened by then. Cast the divisor, or do it here. The `sum(...)` form escapes
+      // this only because `sum(bigint)` returns numeric.
+      kldQuery("SELECT month, region, units_2025, units_2026, revenue_2026_m AS revenue_m FROM region_monthly_2026 ORDER BY month, region"),
+      kldQuery("SELECT month, band, units_2026, units_change_pct FROM band_monthly_2026 ORDER BY month, band")
+    ]);
+    d = { rows: rows.rows, bands: bands.rows };
+  } catch (e) {
+    document.getElementById('ledger').innerHTML = '<div class="kld-empty">' + c.err + e.message + '</div>';
+    return;
+  }
+
+  d.rows.forEach((r) => { r.yoy_pct = (r.units_2026 - r.units_2025) / r.units_2025 * 100; });
+  const months = [...new Set(d.rows.map((r) => r.month))];
+  const regions = [...new Set(d.rows.map((r) => r.region))];
+  const bandNames = [...new Set(d.bands.map((r) => r.band))];
+  const monthMax = {};
+  months.forEach((m) => {
+    monthMax[m] = Math.max.apply(null, d.rows.filter((r) => r.month === m).map((r) => r.units_2026));
+  });
+
+  /* The bar lives in the cell it describes. A separate chart of the same column is
+     the same information twice, and the second copy is the one that goes stale.
+     ⚠️ `kld.table` calls `render(VALUE, ROW)` — the value first. Taking the row as
+     the first argument reads `undefined` off a number, every cell prints "—", and
+     the row count still looks right, so only a cell-content assertion catches it. */
+  function cell(value, r) {
+    const w = (value / monthMax[r.month]) * 100;
+    return kld.el('div', { class: 'inline' }, [
+      kld.el('div', { class: 'track' }, [kld.el('div', { class: 'fill', style: 'width:' + w.toFixed(1) + '%' })]),
+      kld.el('span', { text: F.compact(value) })
+    ]);
+  }
+
+  kld.table(document.getElementById('ledger'), d.rows, [
+    { key: 'month', label: zh ? '月份' : 'Month' },
+    { key: 'region', label: zh ? '区域' : 'Region', head: true },
+    { key: 'units_2026', label: zh ? '单位数' : 'Units', num: true, render: cell },
+    { key: 'yoy_pct', label: zh ? '同比' : 'YoY', num: true, render: (v, r) =>
+      kld.el('span', { class: kld.deltaClass(v), text: F.pct(v) }) },
+    { key: 'revenue_m', label: zh ? '收入' : 'Revenue', num: true, render: (v) => F.money(v, 'M') }
+  ]);
+
+  /* A matrix instead of nine sparklines: the question here is "which band is worst in
+     EVERY month", and a row that is one colour all the way across answers it at a
+     glance, where nine separate lines would each have to be read. */
+  const thead = kld.el('tr', null, [kld.el('th', { text: zh ? '价格带' : 'Band' }),
+    ...months.map((m) => kld.el('th', { class: 'num', text: m.slice(5) }))]);
+  const tbody = kld.el('tbody', null, bandNames.map((b) => {
+    const v = d.bands.find((x) => x.band === b).units_change_pct;
+    return kld.el('tr', null, [
+      kld.el('td', { class: 'rowhead', text: b }),
+      ...months.map((m) => kld.el('td', { class: 'num' }, [
+        kld.el('span', { class: 'heat', style: 'background:var(--danger-soft)',
+                         title: F.pct(v) }),
+        kld.el('span', { style: 'font-size:12px', text: F.pct(v) })
+      ]))
+    ]);
+  }));
+  document.getElementById('matrix').replaceChildren(
+    kld.el('table', { class: 'kld-table matrix' }, [kld.el('thead', null, [thead]), tbody]));
+})();
+</script>
+</body>
+</html>

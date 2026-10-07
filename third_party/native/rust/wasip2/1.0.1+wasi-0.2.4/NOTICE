@@ -1,0 +1,8 @@
+Upstream wasip2 1.0.1+wasi-0.2.4 declares Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT.
+This distribution selects Apache-2.0. The release omits a standalone licence file;
+the standard SPDX full text is supplied alongside the unmodified upstream source,
+which retains every original copyright/author notice. Template placeholders in the
+standard text do not replace those original notices.
+
+
+Original package authors: []

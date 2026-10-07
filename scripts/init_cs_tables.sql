@@ -1,0 +1,4 @@
+-- Consumer Study (Research) tables used to be created here
+-- (cs_projects / cs_personas / cs_interview_sessions / cs_surveys /
+-- cs_concept_tests / cs_tasks / cs_research_studies / cs_chat_messages).
+-- That module was retired; none of those tables are part of the schema now.

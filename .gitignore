@@ -1,0 +1,56 @@
+# Environment / Secrets
+.env
+.env.*
+!.env.example
+
+# Data volumes (Docker runtime data)
+data/postgres/
+data/minio/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+.venv312/
+venv/
+env/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Temp files
+*.tmp
+*.bak
+
+# Database migration exports
+scripts/csv_export/
+klado_migration*.zip
+
+# Agent verification artifacts
+.playwright-cli/
+
+# Mavis harness scratch (screenshots/canvas assets) — not project content
+.mavis/
+
+
+# Disposable checkout owned exclusively by the deployment receiver.
+.deploy-checkout/

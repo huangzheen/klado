@@ -1,0 +1,42 @@
+{
+  "packages": [
+    {
+      "name": "flatbuffers",
+      "version": "25.12.19",
+      "source": "https://raw.githubusercontent.com/google/flatbuffers/v25.12.19/LICENSE",
+      "notices": [
+        {
+          "file": "LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "name": "magika",
+      "version": "0.6.3",
+      "source": "https://raw.githubusercontent.com/google/magika/main/LICENSE",
+      "notices": [
+        {
+          "file": "LICENSE",
+          "sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
+        }
+      ]
+    },
+    {
+      "name": "markitdown",
+      "version": "0.1.8",
+      "source": "https://raw.githubusercontent.com/microsoft/markitdown/v0.1.8/LICENSE",
+      "notices": [
+        {
+          "file": "LICENSE",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        },
+        {
+          "file": "ThirdPartyNotices.md",
+          "sha256": "63e3b6f993facc3954aac2c9cee9f64eacde26102900ddb6ecf8a5f5a1701831"
+        }
+      ],
+      "additional_source": "https://raw.githubusercontent.com/microsoft/markitdown/v0.1.8/packages/markitdown/ThirdPartyNotices.md"
+    }
+  ]
+}
